@@ -2,10 +2,12 @@
 backend/.venv/
 backend/.env
 backend/__pycache__/
+backend/*.log
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
 
 # Rust
 core/target/

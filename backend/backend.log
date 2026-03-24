@@ -1,2 +1,0 @@
-INFO:     127.0.0.1:53728 - "POST /api/ai/diplomatic-message HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53737 - "POST /api/ai/decide HTTP/1.1" 200 OK
