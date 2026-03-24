@@ -1,0 +1,94 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/HudLayer.gd" id="1_hud"]
+
+[node name="HudLayer" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopBar" type="HBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = 96.0
+theme_override_constants/separation = 10
+mouse_filter = 1
+
+[node name="RightDrawer" type="PanelContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -420.0
+offset_top = 120.0
+offset_right = -24.0
+offset_bottom = -110.0
+mouse_filter = 1
+
+[node name="Margin" type="MarginContainer" parent="Root/RightDrawer"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="DrawerVBox" type="VBoxContainer" parent="Root/RightDrawer/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="DrawerHeader" type="HBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox"]
+layout_mode = 2
+
+[node name="TitleBox" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DrawerTitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "战局"
+
+[node name="DrawerSubtitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox"]
+layout_mode = 2
+text = "通过底部导航切换不同系统面板"
+
+[node name="DrawerBody" type="ScrollContainer" parent="Root/RightDrawer/Margin/DrawerVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DrawerContent" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerBody"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="NextTurnButton" type="Button" parent="Root/RightDrawer/Margin/DrawerVBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 54)
+text = "推进下一回合"
+
+[node name="BottomTabs" type="HBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 12
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -270.0
+offset_top = -82.0
+offset_right = 270.0
+offset_bottom = -24.0
+alignment = 1
+theme_override_constants/separation = 8
+mouse_filter = 1

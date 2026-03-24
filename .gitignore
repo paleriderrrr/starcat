@@ -1,0 +1,19 @@
+﻿# Python
+backend/.venv/
+backend/.env
+backend/__pycache__/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Rust
+core/target/
+
+# Godot
+starcat/.godot/
+starcat/imported/
+starcat/.import/
+
+# Temp files
+_tmp_docx_extract.txt
