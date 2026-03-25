@@ -101,6 +101,9 @@ func get_enemy_fleet_for_selected_context() -> Dictionary:
 func get_reachable_system_ids(fleet_id: String) -> Array:
 	return GameLogic.reachable_systems(game_state, fleet_id)
 
+func get_player_fleets_in_system(system_id: String) -> Array:
+	return GameLogic.player_fleets_in_system(game_state, system_id, PLAYER_FACTION_ID)
+
 func available_buildings() -> Array:
 	return GameLogic.available_buildings(game_state)
 
@@ -212,8 +215,34 @@ func queue_ship(system_id: String, ship_type: String) -> void:
 	game_state = GameLogic.queue_ship_construction(game_state, system_id, ship_type)
 	state_changed.emit(game_state)
 
+func queue_ship_batch(system_id: String, ship_type: String, count: int) -> void:
+	for _index: int in range(maxi(0, count)):
+		game_state = GameLogic.queue_ship_construction(game_state, system_id, ship_type)
+	state_changed.emit(game_state)
+
 func repair_fleet(fleet_id: String) -> void:
 	game_state = GameLogic.repair_fleet(game_state, fleet_id)
+	state_changed.emit(game_state)
+
+func set_selected_fleet_mission(mission: String) -> void:
+	if selected_fleet_id == "":
+		return
+	game_state = GameLogic.set_fleet_mission(game_state, selected_fleet_id, mission)
+	state_changed.emit(game_state)
+
+func split_selected_fleet() -> void:
+	if selected_fleet_id == "":
+		return
+	game_state = GameLogic.split_fleet(game_state, selected_fleet_id)
+	state_changed.emit(game_state)
+
+func merge_player_fleets_at_selected_system() -> void:
+	var system_id: String = selected_system_id
+	if system_id == "" and selected_fleet_id != "":
+		system_id = str(get_fleet_by_id(selected_fleet_id).get("systemId", ""))
+	if system_id == "":
+		return
+	game_state = GameLogic.merge_player_fleets(game_state, system_id)
 	state_changed.emit(game_state)
 
 func trade_with_faction(target_faction_id: String) -> void:
@@ -323,13 +352,13 @@ func request_director_intervention_preview(intervention_type: String) -> void:
 	if has_node("/root/ApiClient"):
 		ApiClient.request_director_intervention(game_state, intervention_type, 0.6, "GLOBAL", 4)
 
-func execute_selected_combat_protocol(engagement_rules: String = "ALL_OUT", formation: String = "WEDGE") -> void:
+func execute_selected_combat_protocol(engagement_rules: String = "ALL_OUT", formation: String = "WEDGE", tactic_card: String = "BATTLE_LINE") -> void:
 	if selected_fleet_id == "":
 		return
 	var target_fleet: Dictionary = get_enemy_fleet_for_selected_context()
 	if target_fleet.is_empty():
 		return
-	game_state = GameLogic.initiate_combat_protocol(game_state, selected_fleet_id, "FLEET", target_fleet.get("id", ""), engagement_rules, formation)
+	game_state = GameLogic.initiate_combat_protocol(game_state, selected_fleet_id, "FLEET", target_fleet.get("id", ""), engagement_rules, formation, tactic_card)
 	state_changed.emit(game_state)
 	diplomacy_changed.emit()
 

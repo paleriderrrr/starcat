@@ -71,6 +71,15 @@ static func building_catalog() -> Array:
 			"production": {"food": 0, "minerals": 0, "industry": 3, "energy": 0},
 			"housing": 0,
 			"unlock_tech_id": "tech_research_lab"
+		},
+		{
+			"type": "DEFENSE_PLATFORM",
+			"name": "轨道防御平台",
+			"description": "为星系提供固定防御火力，是本地防线的重要组成部分。",
+			"cost": {"food": 0, "minerals": 45, "industry": 25, "energy": 10},
+			"maintenance": {"food": 0, "minerals": 0, "industry": 0, "energy": -2},
+			"production": {"food": 0, "minerals": 0, "industry": 0, "energy": 0},
+			"housing": 0
 		}
 	]
 
@@ -82,7 +91,8 @@ static func building_turns() -> Dictionary:
 		"INTEGRATED_FACTORY": 2,
 		"FUSION_REACTOR": 2,
 		"SHIPYARD": 2,
-		"RESEARCH_LAB": 2
+		"RESEARCH_LAB": 2,
+		"DEFENSE_PLATFORM": 2
 	}
 
 static func ship_turns() -> Dictionary:
@@ -108,6 +118,15 @@ static func treaty_labels() -> Dictionary:
 		"RESEARCH_ACCORD": "科研合作协议",
 		"ALLIANCE": "共同防御同盟",
 		"WAR_STATE": "战争状态"
+	}
+
+static func fleet_mission_labels() -> Dictionary:
+	return {
+		"IDLE": "待命",
+		"EXPLORE": "自动探索",
+		"COLONIZE": "殖民部署",
+		"GUARD": "驻防警戒",
+		"STRIKE": "前线打击"
 	}
 
 static func colonization_modes() -> Dictionary:
@@ -365,6 +384,7 @@ static func create_initial_state() -> Dictionary:
 				"id": "fleet_player_1",
 				"ownerId": "f_player",
 				"systemId": "sys_cat_home",
+				"mission": "IDLE",
 				"name": "第一舰队",
 				"ships": [
 					{"id": "ship_1", "type": "CORVETTE", "name": "小猫号", "hp": 100, "maxHp": 100, "damage": 20, "evasion": 30, "tracking": 50, "speed": 10},
@@ -375,6 +395,7 @@ static func create_initial_state() -> Dictionary:
 				"id": "fleet_enemy_1",
 				"ownerId": "f_merchant",
 				"systemId": "sys_sirius",
+				"mission": "GUARD",
 				"name": "边贸护航队",
 				"ships": [
 					{"id": "ship_3", "type": "CORVETTE", "name": "金币号", "hp": 100, "maxHp": 100, "damage": 18, "evasion": 28, "tracking": 48, "speed": 10},
@@ -385,6 +406,7 @@ static func create_initial_state() -> Dictionary:
 				"id": "fleet_orchid_1",
 				"ownerId": "f_orchid",
 				"systemId": "sys_orion",
+				"mission": "GUARD",
 				"name": "宪章巡防队",
 				"ships": [
 					{"id": "ship_5", "type": "CORVETTE", "name": "宪章号", "hp": 100, "maxHp": 100, "damage": 19, "evasion": 29, "tracking": 49, "speed": 10},

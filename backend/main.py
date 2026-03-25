@@ -424,6 +424,16 @@ def _system_name(game_state: dict[str, Any], system_id: str) -> str:
 def _fleet_strength(fleet: dict[str, Any]) -> int:
     return int(sum(int(ship.get('hp', 0)) + int(ship.get('damage', 0)) * 3 for ship in fleet.get('ships', [])))
 
+def _fleet_mission_label(mission: str) -> str:
+    return {
+        'IDLE': '待命',
+        'EXPLORE': '自动探索',
+        'COLONIZE': '殖民部署',
+        'GUARD': '驻防警戒',
+        'STRIKE': '前线打击',
+    }.get(mission, mission)
+
+
 
 def _resource_rates(game_state: dict[str, Any], faction_id: str) -> dict[str, int]:
     rates = {'food': 0, 'minerals': 0, 'industry': 0, 'energy': 0}
@@ -732,7 +742,7 @@ async def query_fleet_status(payload: FleetStatusRequest) -> FleetStatusResponse
 
     return FleetStatusResponse(
         location=_system_name(payload.game_state, str(fleet.get('systemId', '未知星系'))),
-        mission='驻防待命' if readiness == 'FULL' else '整备恢复',
+        mission=_fleet_mission_label(str(fleet.get('mission', 'IDLE'))),
         strength=_fleet_strength(fleet),
         unit_composition=composition,
         readiness=readiness,
@@ -953,3 +963,5 @@ async def inject_director_intervention(payload: DirectorInterventionRequest) -> 
         effects_summary=effects,
         player_perception=perception,
     )
+
+
