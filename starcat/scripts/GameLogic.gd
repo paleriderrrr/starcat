@@ -2,6 +2,7 @@
 
 class_name GameLogic
 
+const InitialDataScript = preload("res://scripts/data/InitialData.gd")
 const COLONY_COST: Dictionary = {"food": 60, "minerals": 50, "industry": 40, "energy": 20}
 const RECENT_INTERACTION_MEMORY_LIMIT: int = 20
 const INTERACTION_ARCHIVE_BATCH: int = 10
@@ -345,7 +346,7 @@ static func can_afford(stock: Dictionary, cost: Dictionary) -> bool:
 	return int(stock.get("food", 0)) >= int(cost.get("food", 0)) and int(stock.get("minerals", 0)) >= int(cost.get("minerals", 0)) and int(stock.get("industry", 0)) >= int(cost.get("industry", 0)) and int(stock.get("energy", 0)) >= int(cost.get("energy", 0))
 
 static func find_building_blueprint(building_type: String) -> Dictionary:
-	for blueprint: Dictionary in InitialData.building_catalog():
+	for blueprint: Dictionary in InitialDataScript.building_catalog():
 		if blueprint.get("type", "") == building_type:
 			return blueprint
 	return {}
@@ -392,7 +393,7 @@ static func add_researched_tech_to_faction(state: Dictionary, faction_id: String
 	return next_state
 
 static func colony_mode_data(mode: String) -> Dictionary:
-	return InitialData.colonization_modes().get(mode, {})
+	return InitialDataScript.colonization_modes().get(mode, {})
 
 static func system_yield_multiplier(system: Dictionary) -> float:
 	var colony_stage: String = system.get("colonyStage", "NONE")
@@ -758,7 +759,7 @@ static func describe_player_diplomatic_intent(message_text: String) -> Dictionar
 	var detail: String = "这条信息会被视为常规外交接触，主要用于表达立场，不会直接触发条约或贸易意图。"
 	if intent_type == "TREATY":
 		var treaty_id: String = str(intent.get("treaty", "NON_AGGRESSION"))
-		var treaty_label: String = InitialData.treaty_labels().get(treaty_id, treaty_id)
+		var treaty_label: String = InitialDataScript.treaty_labels().get(treaty_id, treaty_id)
 		label = "条约提案"
 		detail = "这条信息会被识别为对“%s”的正式提案，AI 会按当前关系、战略处境和人格倾向进行回应。" % treaty_label
 	elif intent_type == "TRADE":
@@ -1005,7 +1006,7 @@ static func expire_pending_proposals(state: Dictionary) -> Dictionary:
 
 static func available_buildings(state: Dictionary) -> Array:
 	var result: Array = []
-	for building: Dictionary in InitialData.building_catalog():
+	for building: Dictionary in InitialDataScript.building_catalog():
 		if building.get("unlock_tech_id", "") == "" or has_research(state, building.get("unlock_tech_id", "")):
 			result.append(building)
 	return result
@@ -1074,7 +1075,7 @@ static func progress_fleet_movement_cooldowns(state: Dictionary) -> Dictionary:
 	return next_state
 
 static func fleet_mission_label(mission: String) -> String:
-	return str(InitialData.fleet_mission_labels().get(mission, mission))
+	return str(InitialDataScript.fleet_mission_labels().get(mission, mission))
 
 static func set_fleet_mission(state: Dictionary, fleet_id: String, mission: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1359,8 +1360,8 @@ static func queue_structure(state: Dictionary, system_id: String, building_type:
 		"kind": "BUILDING",
 		"targetId": building_type,
 		"displayName": blueprint.get("name", ""),
-		"turnsRemaining": InitialData.building_turns().get(building_type, 1),
-		"totalTurns": InitialData.building_turns().get(building_type, 1)
+		"turnsRemaining": InitialDataScript.building_turns().get(building_type, 1),
+		"totalTurns": InitialDataScript.building_turns().get(building_type, 1)
 	}
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append(queue_item)
@@ -1400,14 +1401,14 @@ static func queue_ship_construction(state: Dictionary, system_id: String, ship_t
 		"ownerId": player.get("id", ""),
 		"kind": "SHIP",
 		"targetId": ship_type,
-		"displayName": InitialData.ship_labels().get(ship_type, ship_type),
-		"turnsRemaining": InitialData.ship_turns().get(ship_type, 1),
-		"totalTurns": InitialData.ship_turns().get(ship_type, 1)
+		"displayName": InitialDataScript.ship_labels().get(ship_type, ship_type),
+		"turnsRemaining": InitialDataScript.ship_turns().get(ship_type, 1),
+		"totalTurns": InitialDataScript.ship_turns().get(ship_type, 1)
 	}
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append(queue_item)
 	next_state["constructionQueue"] = queue
-	return add_message(next_state, "舰船已加入队列", "%s 已开始建造 %s。" % [target_system.get("name", ""), InitialData.ship_labels().get(ship_type, ship_type)], "SYSTEM")
+	return add_message(next_state, "舰船已加入队列", "%s 已开始建造 %s。" % [target_system.get("name", ""), InitialDataScript.ship_labels().get(ship_type, ship_type)], "SYSTEM")
 
 static func repair_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1547,7 +1548,7 @@ static func revoke_treaty(state: Dictionary, target_faction_id: String, treaty_t
 		relation["trust"] = trust
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
-	var treaty_label: String = InitialData.treaty_labels().get(treaty_type, treaty_type)
+	var treaty_label: String = InitialDataScript.treaty_labels().get(treaty_type, treaty_type)
 	next_state = update_diplomatic_profile(next_state, target_faction_id, "hostile", -6, "认为玩家不再愿意维持既有承诺。")
 	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "NOTIFICATION", "条约废止通知", "玩家已正式废止 %s。" % treaty_label, true)
 	next_state = add_diplomatic_memory(next_state, "条约终止", "玩家终止了与目标势力之间的现行条约。", [player.get("id", ""), target_faction_id], "TREATY", 2)
@@ -1651,7 +1652,7 @@ static func propose_treaty(state: Dictionary, target_faction_id: String, treaty_
 		relation["utility"] = int(relation.get("utility", 0)) + (8 if accepted else -2)
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
-	var treaty_label: String = InitialData.treaty_labels().get(treaty_type, treaty_type)
+	var treaty_label: String = InitialDataScript.treaty_labels().get(treaty_type, treaty_type)
 	next_state = update_diplomatic_profile(next_state, target_faction_id, "friendly" if accepted else "firm", 4 if accepted else -4, "玩家发起条约提案")
 	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "PROPOSAL", treaty_label, "玩家提出条约：%s。" % treaty_label, true)
 	next_state = add_diplomatic_memory(next_state, "条约提案", "已向 %s 发出条约提案：%s。" % [target_name, treaty_label], [player.get("id", ""), target_faction_id], "PROPOSAL", 2)
@@ -1791,7 +1792,7 @@ static func apply_passive_repairs(state: Dictionary) -> Dictionary:
 static func complete_queue_item(state: Dictionary, item: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	if item.get("kind", "") == "BUILDING":
-		for blueprint: Dictionary in InitialData.building_catalog():
+		for blueprint: Dictionary in InitialDataScript.building_catalog():
 			if blueprint.get("type", "") != item.get("targetId", ""):
 				continue
 			for system_index: int in range(next_state["starSystems"].size()):
@@ -1806,7 +1807,7 @@ static func complete_queue_item(state: Dictionary, item: Dictionary) -> Dictiona
 					return add_message(next_state, "建筑完工", "%s 已在 %s 完成建造。" % [item.get("displayName", ""), system.get("name", "")], "EVENT")
 	else:
 		var ship_type: String = item.get("targetId", "")
-		var ship: Dictionary = create_ship(ship_type, "%s级舰" % InitialData.ship_labels().get(ship_type, ship_type), next_state, item.get("ownerId", ""))
+		var ship: Dictionary = create_ship(ship_type, "%s级舰" % InitialDataScript.ship_labels().get(ship_type, ship_type), next_state, item.get("ownerId", ""))
 		for fleet_index: int in range(next_state["fleets"].size()):
 			var fleet: Dictionary = next_state["fleets"][fleet_index]
 			if fleet.get("ownerId", "") == item.get("ownerId", "") and fleet.get("systemId", "") == item.get("systemId", ""):
@@ -2970,7 +2971,7 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 static func colonize_for_faction(state: Dictionary, faction_id: String, system_id: String, population: int, title: String, content: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var habitat: Dictionary = {}
-	for entry: Dictionary in InitialData.building_catalog():
+	for entry: Dictionary in InitialDataScript.building_catalog():
 		if entry.get("type", "") == "HABITAT":
 			habitat = entry
 			break
@@ -2987,7 +2988,7 @@ static func colonize_for_faction(state: Dictionary, faction_id: String, system_i
 			system["ownerId"] = faction_id
 			system["population"] = population
 			system["visibilityLevel"] = "FULL"
-			system["buildings"] = [InitialData._make_building("colony_%s" % system_id, habitat)]
+			system["buildings"] = [InitialDataScript._make_building("colony_%s" % system_id, habitat)]
 			system["colonyStage"] = "COLONY"
 			system["colonizationProgress"] = 100.0
 			system["colonizationTurnsRemaining"] = 0
@@ -3015,7 +3016,7 @@ static func start_colony_for_faction(state: Dictionary, faction_id: String, syst
 	if mode_data.is_empty():
 		return next_state
 	var habitat: Dictionary = {}
-	for entry: Dictionary in InitialData.building_catalog():
+	for entry: Dictionary in InitialDataScript.building_catalog():
 		if entry.get("type", "") == "HABITAT":
 			habitat = entry
 			break
@@ -3031,7 +3032,7 @@ static func start_colony_for_faction(state: Dictionary, faction_id: String, syst
 		system["ownerId"] = faction_id
 		system["population"] = int(mode_data.get("initial_population", 60))
 		system["visibilityLevel"] = "FULL"
-		system["buildings"] = [InitialData._make_building("colony_%s" % system_id, habitat)] if not habitat.is_empty() else []
+		system["buildings"] = [InitialDataScript._make_building("colony_%s" % system_id, habitat)] if not habitat.is_empty() else []
 		system["colonyStage"] = "OUTPOST"
 		system["colonizationProgress"] = 0.0
 		system["colonizationTurnsRemaining"] = int(mode_data.get("turns", 3))
@@ -3711,8 +3712,8 @@ static func queue_structure_for_ai(state: Dictionary, owner_id: String, system_i
 		"kind": "BUILDING",
 		"targetId": blueprint.get("type", ""),
 		"displayName": blueprint.get("name", ""),
-		"turnsRemaining": InitialData.building_turns().get(blueprint.get("type", ""), 1),
-		"totalTurns": InitialData.building_turns().get(blueprint.get("type", ""), 1)
+		"turnsRemaining": InitialDataScript.building_turns().get(blueprint.get("type", ""), 1),
+		"totalTurns": InitialDataScript.building_turns().get(blueprint.get("type", ""), 1)
 	})
 	next_state["constructionQueue"] = queue
 	return add_message(next_state, message_title, message_content, "EVENT")
@@ -3734,12 +3735,12 @@ static func queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: St
 		"ownerId": owner_id,
 		"kind": "SHIP",
 		"targetId": ship_type,
-		"displayName": InitialData.ship_labels().get(ship_type, ship_type),
-		"turnsRemaining": InitialData.ship_turns().get(ship_type, 1),
-		"totalTurns": InitialData.ship_turns().get(ship_type, 1)
+		"displayName": InitialDataScript.ship_labels().get(ship_type, ship_type),
+		"turnsRemaining": InitialDataScript.ship_turns().get(ship_type, 1),
+		"totalTurns": InitialDataScript.ship_turns().get(ship_type, 1)
 	})
 	next_state["constructionQueue"] = queue
-	return add_message(next_state, message_title, "%s%s。" % [message_prefix, InitialData.ship_labels().get(ship_type, ship_type)], "EVENT")
+	return add_message(next_state, message_title, "%s%s。" % [message_prefix, InitialDataScript.ship_labels().get(ship_type, ship_type)], "EVENT")
 
 static func choose_ai_building_priority(state: Dictionary, faction_id: String, home_system: Dictionary, profile: String) -> String:
 	if home_system.is_empty():

@@ -12,11 +12,11 @@
 
 | 层级 | 推荐技术 | 说明 |
 |------|---------|------|
-| 渲染引擎 | Three.js | WebGL加速3D星图渲染 |
-| 核心逻辑 | Rust → WebAssembly | 高性能计算层 |
-| 前端框架 | React + TypeScript | 稳定UI开发 |
-| AI集成 | LangChain | 大模型应用框架 |
-| 后端 | Node.js + FastAPI | Python处理AI |
+| 渲染引擎 | Godot 4.6 | 当前客户端与场景运行时 |
+| 核心逻辑 | GDScript | 游戏规则、状态与服务层 |
+| UI框架 | Godot Control | 客户端界面与交互 |
+| AI集成 | 可选 LLM Provider | 本地规则优先，联网调用可选 |
+| 服务形态 | Godot 内建服务 | 分析、决策、外交与叙事能力内嵌 |
 
 ### 1.3 核心设计理念
 
@@ -641,7 +641,7 @@ interface EventRequest {
 
 ### 第三阶段: 植入灵魂 (AI Integration)
 - [ ] Prompt Engineering
-- [ ] FastAPI服务搭建
+- [ ] Godot 内建服务与可选 LLM Provider 完善
 - [ ] 向量数据库集成
 - [ ] 接口对接
 

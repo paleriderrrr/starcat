@@ -1,0 +1,5 @@
+[llm]
+remote_enabled=false
+api_key=
+model=qwen3.5-flash
+base_url=https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1

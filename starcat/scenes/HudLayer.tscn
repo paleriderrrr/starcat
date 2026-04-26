@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://ssf1xwy6ujac"]
 
-[ext_resource type="Script" uid="uid://bgiqpqh301g2y" path="res://scripts/HudLayer.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/HudLayer.gd" id="1_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/Chip.tscn" id="2_chip"]
 [ext_resource type="PackedScene" path="res://scenes/ui/ActionButton.tscn" id="3_button"]
 

@@ -1,5 +1,7 @@
 ﻿extends CanvasLayer
 
+const GameLogicScript = preload("res://scripts/GameLogic.gd")
+const InitialDataScript = preload("res://scripts/data/InitialData.gd")
 const CHIP_SCENE: PackedScene = preload("res://scenes/ui/Chip.tscn")
 const ACTION_BUTTON_SCENE: PackedScene = preload("res://scenes/ui/ActionButton.tscn")
 const ACTION_ROW_SCENE: PackedScene = preload("res://scenes/ui/ActionRow.tscn")
@@ -309,7 +311,7 @@ func _build_objectives_panel() -> void:
 			"奇观选址: %s" % str(science_report.get("best_site_name", "-"))
 		]
 	))
-	var owned_systems: Array = GameLogic.owned_systems(GameState.game_state, GameState.PLAYER_FACTION_ID)
+	var owned_systems: Array = GameLogicScript.owned_systems(GameState.game_state, GameState.PLAYER_FACTION_ID)
 	var player_fleets: Array = GameState.get_player_fleets()
 	var player_queue_count: int = 0
 	for queue_item: Dictionary in GameState.game_state.get("constructionQueue", []):
@@ -343,7 +345,7 @@ func _build_objectives_panel() -> void:
 				[
 					"位置: %s / 任务: %s" % [
 						str(GameState.get_system_by_id(fleet.get("systemId", "")).get("name", fleet.get("systemId", ""))),
-						GameLogic.fleet_mission_label(str(fleet.get("mission", "IDLE")))
+						GameLogicScript.fleet_mission_label(str(fleet.get("mission", "IDLE")))
 					]
 				]
 			))
@@ -450,8 +452,8 @@ func _build_diplomacy_panel() -> void:
 	for faction: Dictionary in GameState.game_state.get("factions", []):
 		if faction.get("isPlayer", false):
 			continue
-		var relation: Dictionary = GameLogic.relation_breakdown(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
-		var active_treaties: Array = GameLogic.active_treaties_between(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
+		var relation: Dictionary = GameLogicScript.relation_breakdown(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
+		var active_treaties: Array = GameLogicScript.active_treaties_between(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
 		drawer_content.add_child(_make_diplomacy_faction_card(faction, relation, active_treaties))
 		var history: Array = GameState.get_relation_history(faction.get("id", ""))
 		var detail_row: HBoxContainer = _action_row()
@@ -656,7 +658,7 @@ func _build_advisor_panel() -> void:
 	for faction: Dictionary in GameState.game_state.get("factions", []):
 		if faction.get("isPlayer", false):
 			continue
-		var relation: Dictionary = GameLogic.relation_breakdown(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
+		var relation: Dictionary = GameLogicScript.relation_breakdown(GameState.game_state, GameState.PLAYER_FACTION_ID, faction.get("id", ""))
 		drawer_content.add_child(_make_status_card(
 			str(faction.get("name", "")),
 			[
@@ -857,7 +859,7 @@ func _build_system_panel(system: Dictionary) -> void:
 			"殖民状态",
 			[
 				"殖民阶段: %s" % _colony_stage_name(system.get("colonyStage", "NONE")),
-				"殖民模式: %s" % InitialData.colonization_modes().get(system.get("colonizationMode", ""), {}).get("name", system.get("colonizationMode", "未知")),
+				"殖民模式: %s" % InitialDataScript.colonization_modes().get(system.get("colonizationMode", ""), {}).get("name", system.get("colonizationMode", "未知")),
 				"殖民进度: %s%%" % str(int(round(float(system.get("colonizationProgress", 0.0))))),
 				"剩余回合: %s" % str(system.get("colonizationTurnsRemaining", 0)),
 				"稳定度: %s" % str(system.get("stability", 0)),
@@ -893,17 +895,17 @@ func _build_system_panel(system: Dictionary) -> void:
 		if has_shipyard:
 			drawer_content.add_child(_make_section_title("可建造舰船"))
 			for ship_type: String in GameState.available_ship_types():
-				var cost: Dictionary = GameLogic.ship_cost(ship_type, GameState.game_state, GameState.PLAYER_FACTION_ID)
+				var cost: Dictionary = GameLogicScript.ship_cost(ship_type, GameState.game_state, GameState.PLAYER_FACTION_ID)
 				drawer_content.add_child(_make_status_card(
-					"%s" % InitialData.ship_labels().get(ship_type, ship_type),
+					"%s" % InitialDataScript.ship_labels().get(ship_type, ship_type),
 					[
 						"花费: %s" % _resource_line(cost),
-						"建造时间: %s 回合" % str(InitialData.ship_turns().get(ship_type, 1))
+						"建造时间: %s 回合" % str(InitialDataScript.ship_turns().get(ship_type, 1))
 					]
 				))
 				var ship_actions: HBoxContainer = _action_row()
-				ship_actions.add_child(_make_action_button("建造%s" % InitialData.ship_labels().get(ship_type, ship_type), GameState.queue_ship.bind(system.get("id", ""), ship_type)))
-				ship_actions.add_child(_make_action_button("排队3艘%s" % InitialData.ship_labels().get(ship_type, ship_type), GameState.queue_ship_batch.bind(system.get("id", ""), ship_type, 3)))
+				ship_actions.add_child(_make_action_button("建造%s" % InitialDataScript.ship_labels().get(ship_type, ship_type), GameState.queue_ship.bind(system.get("id", ""), ship_type)))
+				ship_actions.add_child(_make_action_button("排队3艘%s" % InitialDataScript.ship_labels().get(ship_type, ship_type), GameState.queue_ship_batch.bind(system.get("id", ""), ship_type, 3)))
 				ship_actions.add_child(_make_action_button("后端校验", GameState.request_construction_validation.bind(system.get("id", ""), ship_type, "SHIP")))
 				drawer_content.add_child(ship_actions)
 	var system_actions: HBoxContainer = _action_row()
@@ -939,7 +941,7 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 			"总生命: %s/%s" % [str(total_hp), str(total_max_hp)],
 			"总伤害: %s" % str(total_damage),
 			"移动冷却: %s" % str(int(fleet.get("movementCooldown", 0))),
-			"当前任务: %s" % GameLogic.fleet_mission_label(str(fleet.get("mission", "IDLE")))
+			"当前任务: %s" % GameLogicScript.fleet_mission_label(str(fleet.get("mission", "IDLE")))
 		]
 	))
 	var mission_row_one: HBoxContainer = _action_row()
@@ -993,7 +995,7 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 
 func _make_building_card(building: Dictionary) -> PanelContainer:
 	var card: PanelContainer = BUILDING_CARD_SCENE.instantiate()
-	card.get_node("Content/Title").text = "%s / %s 回合" % [building.get("name", ""), str(InitialData.building_turns().get(building.get("type", ""), 1))]
+	card.get_node("Content/Title").text = "%s / %s 回合" % [building.get("name", ""), str(InitialDataScript.building_turns().get(building.get("type", ""), 1))]
 	card.get_node("Content/Description").text = str(building.get("description", ""))
 	card.get_node("Content/Cost").text = "建造成本: %s" % _resource_line(building.get("cost", {}))
 	card.get_node("Content/Production").text = "产出: %s" % _resource_line(building.get("production", {}), true)
@@ -1223,7 +1225,7 @@ func _make_summary_card(title: String, lines: Array) -> PanelContainer:
 
 func _make_fleet_ship_card(ship: Dictionary) -> PanelContainer:
 	var card: PanelContainer = FLEET_SHIP_CARD_SCENE.instantiate()
-	card.get_node("Content/Title").text = "%s / %s" % [ship.get("name", ""), InitialData.ship_labels().get(ship.get("type", ""), ship.get("type", ""))]
+	card.get_node("Content/Title").text = "%s / %s" % [ship.get("name", ""), InitialDataScript.ship_labels().get(ship.get("type", ""), ship.get("type", ""))]
 	card.get_node("Content/Stats").text = "HP %s/%s / 伤害 %s" % [str(ship.get("hp", 0)), str(ship.get("maxHp", 0)), str(ship.get("damage", 0))]
 	return card
 
@@ -1364,7 +1366,7 @@ func _treaty_names_text(treaties: Array) -> String:
 		return "无"
 	var names: PackedStringArray = PackedStringArray()
 	for treaty: Dictionary in treaties:
-		names.append(InitialData.treaty_labels().get(treaty.get("type", ""), treaty.get("type", "")))
+		names.append(InitialDataScript.treaty_labels().get(treaty.get("type", ""), treaty.get("type", "")))
 	return ", ".join(names)
 
 func _colony_stage_name(stage: String) -> String:

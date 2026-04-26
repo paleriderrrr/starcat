@@ -1,21 +1,11 @@
-﻿# Python
-backend/.venv/
-backend/.env
-backend/__pycache__/
-backend/*.log
-
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/*.tsbuildinfo
-
-# Rust
-core/target/
-
 # Godot
 starcat/.godot/
 starcat/imported/
 starcat/.import/
+starcat/starcat.local.cfg
 
 # Temp files
 _tmp_docx_extract.txt
+
+# Python
+__pycache__/

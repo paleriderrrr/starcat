@@ -16,7 +16,7 @@
 - `scripts/autoload/GameState.gd`
   - 全局游戏状态、选中上下文、标签显隐、回合推进
 - `scripts/autoload/ApiClient.gd`
-  - 后端接口入口占位
+  - Godot 内建服务门面与可选 LLM 调用入口
 - `scripts/StarMap.gd`
   - 用现代 Godot 模式动态生成星系、航道、舰队
 - `scripts/HudLayer.gd`
@@ -34,12 +34,12 @@
 - `frontend/src/components/StarMap.tsx` -> `scripts/StarMap.gd`
 - `frontend/src/components/UI.tsx` -> `scripts/HudLayer.gd`
 - `frontend/src/game/data.ts` -> `scripts/autoload/GameState.gd`
-- `backend/main.py` -> `scripts/autoload/ApiClient.gd` 的 HTTP 调用目标
+- 旧 Python 服务层 -> 已迁入 `scripts/autoload/ApiClient.gd` 与 `scripts/services/*`
 
 ## 下一步建议
 
 1. 用 Godot 编辑器实际打开工程，修正仅在运行时才会暴露的 UI 或 GDScript 细节
-2. 把后端 AI 决策正式接进 `advance_turn`，让商贾联盟回合也走结构化模型输出
+2. 继续提升 Godot 内 AI 决策质量，让商贾联盟回合与外交文案更稳定
 3. 给星图补相机拖拽、缩放、Hover 提示和更清晰的舰队选中反馈
 4. 给 HUD 增加消息中心与更精细的战斗/条约摘要
 5. 再评估是否把 Rust 核心通过 GDExtension 接入 Godot
@@ -51,4 +51,4 @@
 - 全局状态放在 `AutoLoad`
 - GDScript 统一写类型标注
 - 涉及用户可见界面改动时，默认优先通过 `.tscn` 场景和 Godot 编辑器完成可视化修改；只有在需求明确说明，或 UI 结构本身由通用数据驱动且无法稳定用编辑器表达时，才允许在脚本中动态创建 UI 节点
-- 暂时不把百炼 API Key 放进 Godot 客户端，AI 仍保留走 FastAPI
+- 百炼 API Key 通过 Godot 本地配置文件接入；未启用时默认走本地规则与模板回退
