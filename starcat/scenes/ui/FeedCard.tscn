@@ -40,6 +40,7 @@ text = "摘要信息"
 
 [node name="Body" type="RichTextLabel" parent="Content"]
 layout_mode = 2
+theme_override_colors/default_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 bbcode_enabled = true
@@ -49,6 +50,7 @@ text = "正文"
 
 [node name="Footnote" type="RichTextLabel" parent="Content"]
 layout_mode = 2
+theme_override_colors/default_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 bbcode_enabled = true

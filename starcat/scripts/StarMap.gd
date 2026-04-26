@@ -178,8 +178,9 @@ func _make_label(text: String, offset: Vector3, compact: bool = false) -> Label3
 	label.position = offset
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.modulate = Color("F8F7FF")
-	label.font_size = 24 if compact else 30
-	label.outline_size = 6
+	label.pixel_size = 0.01 if compact else 0.012
+	label.font_size = 30 if compact else 38
+	label.outline_size = 8
 	return label
 
 func _get_owner_color(owner_id: Variant) -> Color:

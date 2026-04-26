@@ -24,6 +24,7 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Title" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
@@ -32,36 +33,47 @@ text_overrun_behavior = 3
 text = "战略态势"
 
 [node name="HighPressure" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "高压对象"
 
 [node name="HighOpportunity" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "高机会对象"
 
 [node name="Deteriorating" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "关系恶化对象"
 
 [node name="Improving" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "关系改善对象"
 
 [node name="Flashpoints" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "潜在爆点"
 
 [node name="Posture" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3

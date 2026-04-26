@@ -24,6 +24,7 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Title" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
@@ -32,25 +33,33 @@ text_overrun_behavior = 3
 text = "摘要标题"
 
 [node name="Line1" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "摘要行 1"
 
 [node name="Line2" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "摘要行 2"
 
 [node name="Line3" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "摘要行 3"
 
 [node name="Line4" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "摘要行 4"

@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [node name="InfoLine" type="Label"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3
 text_overrun_behavior = 3

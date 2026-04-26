@@ -24,6 +24,7 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Title" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
@@ -32,12 +33,14 @@ text_overrun_behavior = 3
 text = "目标星系"
 
 [node name="Meta" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3
 text_overrun_behavior = 3
 text = "路线信息"
 
 [node name="Status" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
