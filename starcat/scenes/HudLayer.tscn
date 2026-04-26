@@ -1,11 +1,25 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://ssf1xwy6ujac"]
 
-[ext_resource type="Script" path="res://scripts/HudLayer.gd" id="1_hud"]
+[ext_resource type="Script" uid="uid://bgiqpqh301g2y" path="res://scripts/HudLayer.gd" id="1_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/Chip.tscn" id="2_chip"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ActionButton.tscn" id="3_button"]
 
-[node name="HudLayer" type="CanvasLayer"]
+[sub_resource type="StyleBoxFlat" id="1"]
+bg_color = Color(0.07, 0.08, 0.13, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.360784, 0.419608, 0.611765, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[node name="HudLayer" type="CanvasLayer" unique_id=442902302]
 script = ExtResource("1_hud")
 
-[node name="Root" type="Control" parent="."]
+[node name="Root" type="Control" parent="." unique_id=1689528841]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -14,7 +28,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="TopBar" type="HBoxContainer" parent="Root"]
+[node name="TopBar" type="HBoxContainer" parent="Root" unique_id=2029453875]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -22,73 +36,220 @@ offset_left = 24.0
 offset_top = 20.0
 offset_right = -24.0
 offset_bottom = 96.0
+grow_horizontal = 2
 theme_override_constants/separation = 10
-mouse_filter = 1
 
-[node name="RightDrawer" type="PanelContainer" parent="Root"]
+[node name="TurnChip" parent="Root/TopBar" unique_id=1763898050 instance=ExtResource("2_chip")]
+layout_mode = 2
+
+[node name="EraChip" parent="Root/TopBar" unique_id=717431576 instance=ExtResource("2_chip")]
+layout_mode = 2
+
+[node name="FoodChip" parent="Root/TopBar" unique_id=394234651 instance=ExtResource("2_chip")]
+custom_minimum_size = Vector2(132, 56)
+layout_mode = 2
+
+[node name="MineralsChip" parent="Root/TopBar" unique_id=2109432686 instance=ExtResource("2_chip")]
+custom_minimum_size = Vector2(132, 56)
+layout_mode = 2
+
+[node name="IndustryChip" parent="Root/TopBar" unique_id=1576787535 instance=ExtResource("2_chip")]
+custom_minimum_size = Vector2(132, 56)
+layout_mode = 2
+
+[node name="EnergyChip" parent="Root/TopBar" unique_id=1469020273 instance=ExtResource("2_chip")]
+custom_minimum_size = Vector2(132, 56)
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="Root/TopBar" unique_id=1390083291]
+custom_minimum_size = Vector2(16, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ToggleLabelsButton" parent="Root/TopBar" unique_id=1498848075 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(160, 56)
+layout_mode = 2
+text = "文字标记: 显示"
+
+[node name="RightDrawer" type="PanelContainer" parent="Root" unique_id=2046304034]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = -1
 anchor_left = 1.0
+anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -420.0
-offset_top = 120.0
+offset_left = -456.0
+offset_top = -337.0
 offset_right = -24.0
-offset_bottom = -110.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 1
+theme_override_styles/panel = SubResource("1")
 
-[node name="Margin" type="MarginContainer" parent="Root/RightDrawer"]
+[node name="Margin" type="MarginContainer" parent="Root/RightDrawer" unique_id=449629530]
 layout_mode = 2
-theme_override_constants/margin_left = 18
-theme_override_constants/margin_top = 18
-theme_override_constants/margin_right = 18
-theme_override_constants/margin_bottom = 18
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 22
 
-[node name="DrawerVBox" type="VBoxContainer" parent="Root/RightDrawer/Margin"]
+[node name="DrawerVBox" type="VBoxContainer" parent="Root/RightDrawer/Margin" unique_id=404862010]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="DrawerHeader" type="HBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox"]
+[node name="DrawerHeader" type="HBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox" unique_id=2090290519]
 layout_mode = 2
 
-[node name="TitleBox" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader"]
+[node name="TitleBox" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader" unique_id=786776409]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="DrawerTitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox"]
+[node name="DrawerTitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox" unique_id=1572680833]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "战局"
+autowrap_mode = 3
 
-[node name="DrawerSubtitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox"]
+[node name="DrawerSubtitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox" unique_id=625947452]
 layout_mode = 2
 text = "通过底部导航切换不同系统面板"
+autowrap_mode = 3
 
-[node name="DrawerBody" type="ScrollContainer" parent="Root/RightDrawer/Margin/DrawerVBox"]
+[node name="DrawerBody" type="ScrollContainer" parent="Root/RightDrawer/Margin/DrawerVBox" unique_id=1378992521]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="DrawerContent" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerBody"]
+[node name="DrawerContent" type="VBoxContainer" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerBody" unique_id=439105152]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
-[node name="NextTurnButton" type="Button" parent="Root/RightDrawer/Margin/DrawerVBox"]
-layout_mode = 2
+[node name="NextTurnButton" parent="Root/RightDrawer/Margin/DrawerVBox" unique_id=772075317 instance=ExtResource("3_button")]
 custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
 text = "推进下一回合"
 
-[node name="BottomTabs" type="HBoxContainer" parent="Root"]
+[node name="CenterModalOverlay" type="ColorRect" parent="Root" unique_id=1044012451]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.72)
+
+[node name="CenterModal" type="PanelContainer" parent="Root/CenterModalOverlay" unique_id=1766394035]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -300.0
+offset_right = 420.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_styles/panel = SubResource("1")
+
+[node name="Margin" type="MarginContainer" parent="Root/CenterModalOverlay/CenterModal" unique_id=1788620851]
+layout_mode = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 24
+
+[node name="ModalVBox" type="VBoxContainer" parent="Root/CenterModalOverlay/CenterModal/Margin" unique_id=135946563]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Header" type="HBoxContainer" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox" unique_id=1072054142]
+layout_mode = 2
+
+[node name="TitleBox" type="VBoxContainer" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header" unique_id=1158308174]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ModalTitle" type="Label" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header/TitleBox" unique_id=274795908]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "详情"
+autowrap_mode = 3
+
+[node name="ModalSubtitle" type="Label" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header/TitleBox" unique_id=1892726054]
+layout_mode = 2
+text = "查看完整内容"
+autowrap_mode = 3
+
+[node name="CloseButton" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header" unique_id=1819030770 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "关闭"
+
+[node name="Body" type="ScrollContainer" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox" unique_id=520277150]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ModalContent" type="VBoxContainer" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Body" unique_id=489554264]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="BottomTabs" type="HBoxContainer" parent="Root" unique_id=2007791410]
 layout_mode = 1
 anchors_preset = 12
-anchor_left = 0.5
 anchor_top = 1.0
-anchor_right = 0.5
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -270.0
+offset_left = 24.0
 offset_top = -82.0
-offset_right = 270.0
+offset_right = -24.0
 offset_bottom = -24.0
-alignment = 1
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_constants/separation = 8
-mouse_filter = 1
+alignment = 1
+
+[node name="ObjectivesButton" parent="Root/BottomTabs" unique_id=1627532557 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+toggle_mode = true
+text = "目标"
+
+[node name="TechButton" parent="Root/BottomTabs" unique_id=1877022746 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+toggle_mode = true
+text = "科技"
+
+[node name="DiplomacyButton" parent="Root/BottomTabs" unique_id=1446271999 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+toggle_mode = true
+text = "外交"
+
+[node name="CommunicationsButton" parent="Root/BottomTabs" unique_id=1109583712 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+toggle_mode = true
+text = "通讯中心"
+
+[node name="AdvisorButton" parent="Root/BottomTabs" unique_id=758569910 instance=ExtResource("3_button")]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+toggle_mode = true
+text = "AI顾问"
+
+[node name="FleetTabsSpacer" type="Control" parent="Root/BottomTabs" unique_id=1514038941]
+custom_minimum_size = Vector2(16, 1)
+layout_mode = 2
+
+[node name="FleetTabs" type="HBoxContainer" parent="Root/BottomTabs" unique_id=629630431]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8

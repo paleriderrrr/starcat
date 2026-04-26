@@ -101,6 +101,23 @@ func get_enemy_fleet_for_selected_context() -> Dictionary:
 func get_reachable_system_ids(fleet_id: String) -> Array:
 	return GameLogic.reachable_systems(game_state, fleet_id)
 
+func get_reachable_system_details(fleet_id: String) -> Array:
+	return GameLogic.reachable_system_details(game_state, fleet_id)
+
+func get_player_fleets() -> Array:
+	var result: Array = []
+	for fleet: Dictionary in game_state.get("fleets", []):
+		if fleet.get("ownerId", "") == PLAYER_FACTION_ID:
+			result.append(fleet)
+	return result
+
+func get_player_queue_items() -> Array:
+	var result: Array = []
+	for item: Dictionary in game_state.get("constructionQueue", []):
+		if item.get("ownerId", "") == PLAYER_FACTION_ID:
+			result.append(item)
+	return result
+
 func get_player_fleets_in_system(system_id: String) -> Array:
 	return GameLogic.player_fleets_in_system(game_state, system_id, PLAYER_FACTION_ID)
 
@@ -129,6 +146,12 @@ func get_visible_diplomatic_messages() -> Array:
 
 func get_visible_diplomatic_memories() -> Array:
 	return GameLogic.visible_diplomatic_memories_for_player(game_state)
+
+func get_recent_interaction_memory() -> Array:
+	return game_state.get("recentInteractionMemory", [])
+
+func get_archived_interaction_memory() -> Array:
+	return game_state.get("archivedInteractionMemory", [])
 
 func get_pending_proposals() -> Array:
 	return GameLogic.pending_proposals_for_player(game_state)
@@ -160,6 +183,9 @@ func get_interception_report() -> Dictionary:
 
 func get_diplomatic_victory_report() -> Dictionary:
 	return GameLogic.player_diplomatic_victory_report(game_state)
+
+func get_victory_progress_report() -> Dictionary:
+	return GameLogic.player_victory_progress_report(game_state)
 
 func get_diplomatic_intent_preview(faction_id: String) -> Dictionary:
 	return GameLogic.describe_player_diplomatic_intent(get_diplomatic_draft(faction_id))
@@ -265,6 +291,14 @@ func declare_war(target_faction_id: String) -> void:
 	game_state = GameLogic.declare_war_on_faction(game_state, PLAYER_FACTION_ID, target_faction_id)
 	state_changed.emit(game_state)
 
+func send_ultimatum(target_faction_id: String) -> void:
+	game_state = GameLogic.send_ultimatum(game_state, target_faction_id)
+	state_changed.emit(game_state)
+
+func propose_peace_talk(target_faction_id: String) -> void:
+	game_state = GameLogic.propose_peace_talk(game_state, target_faction_id)
+	state_changed.emit(game_state)
+
 func explore_system(system_id: String) -> void:
 	if selected_fleet_id == "":
 		return
@@ -304,6 +338,22 @@ func request_world_query() -> void:
 func request_world_state_scan() -> void:
 	if has_node("/root/ApiClient"):
 		ApiClient.request_world_state(game_state, "ALL")
+
+func request_fleet_move_validation(target_system_id: String) -> void:
+	if has_node("/root/ApiClient") and selected_fleet_id != "" and target_system_id != "":
+		ApiClient.request_fleet_move_validation(game_state, selected_fleet_id, target_system_id)
+
+func request_relationship_scan(faction_id: String) -> void:
+	if has_node("/root/ApiClient") and faction_id != "":
+		ApiClient.request_relationship_status(game_state, PLAYER_FACTION_ID, faction_id)
+
+func request_proposal_evaluation(proposal_id: String) -> void:
+	if has_node("/root/ApiClient") and proposal_id != "":
+		ApiClient.request_proposal_evaluation(game_state, proposal_id, PLAYER_FACTION_ID)
+
+func request_construction_validation(system_id: String, target_id: String, kind: String) -> void:
+	if has_node("/root/ApiClient") and system_id != "" and target_id != "":
+		ApiClient.request_construction_validation(game_state, system_id, target_id, kind)
 
 func request_selected_fleet_status() -> void:
 	if has_node("/root/ApiClient") and selected_fleet_id != "":
@@ -351,6 +401,13 @@ func request_combat_preview() -> void:
 func request_director_intervention_preview(intervention_type: String) -> void:
 	if has_node("/root/ApiClient"):
 		ApiClient.request_director_intervention(game_state, intervention_type, 0.6, "GLOBAL", 4)
+
+func request_narrative_generation_preview() -> void:
+	if not has_node("/root/ApiClient"):
+		return
+	var posture: Dictionary = get_strategic_posture_report()
+	var summary: String = str(posture.get("summary", "玩家文明正在重新评估当前银河态势。"))
+	ApiClient.request_narrative_generation(summary, "FORMAL", "", "INTELLIGENCE_BRIEFING", game_state)
 
 func execute_selected_combat_protocol(engagement_rules: String = "ALL_OUT", formation: String = "WEDGE", tactic_card: String = "BATTLE_LINE") -> void:
 	if selected_fleet_id == "":

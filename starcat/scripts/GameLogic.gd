@@ -1,14 +1,167 @@
-extends RefCounted
+﻿extends RefCounted
 
 class_name GameLogic
 
 const COLONY_COST: Dictionary = {"food": 60, "minerals": 50, "industry": 40, "energy": 20}
+const RECENT_INTERACTION_MEMORY_LIMIT: int = 20
+const INTERACTION_ARCHIVE_BATCH: int = 10
+const ARCHIVED_INTERACTION_MEMORY_LIMIT: int = 64
 
 static func empty_resources() -> Dictionary:
 	return {"food": 0, "minerals": 0, "industry": 0, "energy": 0}
 
 static func duplicate_state(state: Dictionary) -> Dictionary:
 	return state.duplicate(true)
+
+static func make_state_id(state: Dictionary, prefix: String) -> String:
+	var count: int = 0
+	count += state.get("messages", []).size()
+	count += state.get("diplomaticMessages", []).size()
+	count += state.get("diplomaticMemories", []).size()
+	count += state.get("constructionQueue", []).size()
+	count += state.get("fleets", []).size()
+	for system: Dictionary in state.get("starSystems", []):
+		count += system.get("buildings", []).size()
+	for fleet: Dictionary in state.get("fleets", []):
+		count += fleet.get("ships", []).size()
+	return "%s_%s_%s_%s" % [prefix, str(state.get("turn", 1)), str(count), str(Time.get_ticks_msec())]
+
+static func _tokenize_semantic_keywords(text: String, participants: Array = []) -> Array:
+	var normalized: String = text.to_lower()
+	for mark: String in [",", "，", "。", "！", "？", ":", "：", ";", "；", "\n", "\t", "(", ")", "[", "]", "{", "}", "\"", "'"]:
+		normalized = normalized.replace(mark, " ")
+	var keywords: Array = []
+	for fragment: String in normalized.split(" ", false):
+		var token: String = fragment.strip_edges()
+		if token.length() < 2:
+			continue
+		if not keywords.has(token):
+			keywords.append(token)
+	for participant: Variant in participants:
+		var participant_token: String = str(participant).strip_edges().to_lower()
+		if participant_token != "" and not keywords.has(participant_token):
+			keywords.append(participant_token)
+	return keywords
+
+static func _memory_emotional_impact(category: String, importance: int) -> float:
+	var baseline: float = clamp(float(importance) * 0.18, 0.1, 0.9)
+	match category:
+		"WAR", "ULTIMATUM", "WARNING":
+			return -baseline
+		"AGREEMENT", "ALLY", "TRADE", "PUBLIC":
+			return baseline * 0.8
+		_:
+			return baseline * 0.45
+
+static func _build_memory_node(state: Dictionary, title: String, summary: String, participants: Array, category: String, importance: int, emotional_impact: float = 0.0, decay_factor: float = 0.98) -> Dictionary:
+	var resolved_impact: float = emotional_impact if emotional_impact != 0.0 else _memory_emotional_impact(category, importance)
+	return {
+		"id": make_state_id(state, "mem"),
+		"turn": int(state.get("turn", 1)),
+		"title": title,
+		"summary": summary,
+		"participants": participants,
+		"category": category,
+		"importance": importance,
+		"semantic_keywords": _tokenize_semantic_keywords("%s %s" % [title, summary], participants),
+		"emotionalImpact": resolved_impact,
+		"decayFactor": decay_factor
+	}
+
+static func _compress_interaction_batch(entries: Array) -> Dictionary:
+	if entries.is_empty():
+		return {}
+	var participants: Array = []
+	var categories: Array = []
+	var highlights: Array = []
+	var importance: int = 1
+	var total_impact: float = 0.0
+	for item: Dictionary in entries:
+		for participant: Variant in item.get("participants", []):
+			if not participants.has(participant):
+				participants.append(participant)
+		var category: String = str(item.get("category", "EVENT"))
+		if not categories.has(category):
+			categories.append(category)
+		var title: String = str(item.get("title", "未命名交互"))
+		var summary: String = str(item.get("summary", ""))
+		highlights.append("%s：%s" % [title, summary if summary != "" else "无补充说明"])
+		importance = maxi(importance, int(item.get("importance", 1)))
+		total_impact += float(item.get("emotionalImpact", 0.0))
+	var combined_summary: String = "归档摘要：%s" % "；".join(highlights.slice(0, min(3, highlights.size())))
+	return {
+		"title": "交互归档摘要",
+		"summary": combined_summary,
+		"participants": participants,
+		"category": " / ".join(categories),
+		"importance": maxi(importance, 2),
+		"emotionalImpact": clamp(total_impact / maxf(1.0, float(entries.size())), -1.0, 1.0),
+		"decayFactor": 0.985
+	}
+
+static func _archive_old_interactions(next_state: Dictionary) -> Dictionary:
+	var recent: Array = next_state.get("recentInteractionMemory", [])
+	if recent.size() <= RECENT_INTERACTION_MEMORY_LIMIT:
+		next_state["recentInteractionMemory"] = recent
+		return next_state
+	var oldest_batch: Array = recent.slice(recent.size() - INTERACTION_ARCHIVE_BATCH, recent.size())
+	recent = recent.slice(0, recent.size() - INTERACTION_ARCHIVE_BATCH)
+	var archived: Array = next_state.get("archivedInteractionMemory", [])
+	var archive_payload: Dictionary = _compress_interaction_batch(oldest_batch)
+	if not archive_payload.is_empty():
+		archived.push_front(_build_memory_node(
+			next_state,
+			str(archive_payload.get("title", "交互归档摘要")),
+			str(archive_payload.get("summary", "")),
+			archive_payload.get("participants", []),
+			str(archive_payload.get("category", "ARCHIVE")),
+			int(archive_payload.get("importance", 2)),
+			float(archive_payload.get("emotionalImpact", 0.0)),
+			float(archive_payload.get("decayFactor", 0.985))
+		))
+	if archived.size() > ARCHIVED_INTERACTION_MEMORY_LIMIT:
+		archived = archived.slice(0, ARCHIVED_INTERACTION_MEMORY_LIMIT)
+	next_state["recentInteractionMemory"] = recent
+	next_state["archivedInteractionMemory"] = archived
+	return next_state
+
+static func _append_interaction_memory(state: Dictionary, title: String, summary: String, participants: Array, category: String, importance: int) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var recent: Array = next_state.get("recentInteractionMemory", [])
+	recent.push_front(_build_memory_node(next_state, title, summary, participants, category, importance))
+	next_state["recentInteractionMemory"] = recent
+	return _archive_old_interactions(next_state)
+
+static func related_long_term_memories(state: Dictionary, query_text: String, participants: Array = [], limit: int = 4) -> Array:
+	var query_keywords: Array = _tokenize_semantic_keywords(query_text, participants)
+	var candidates: Array = []
+	for memory: Dictionary in state.get("archivedInteractionMemory", []):
+		var keywords: Array = memory.get("semantic_keywords", [])
+		var overlap: int = 0
+		for keyword: Variant in query_keywords:
+			if keywords.has(keyword):
+				overlap += 1
+		var participant_bonus: int = 0
+		for participant: Variant in participants:
+			if memory.get("participants", []).has(participant):
+				participant_bonus += 1
+		var age_turns: int = maxi(0, int(state.get("turn", 1)) - int(memory.get("turn", 1)))
+		var current_influence: float = float(memory.get("emotionalImpact", 0.0)) * pow(float(memory.get("decayFactor", 0.98)), age_turns)
+		var relevance: float = float(overlap * 2 + participant_bonus) + absf(current_influence)
+		if relevance <= 0.0:
+			continue
+		var entry: Dictionary = memory.duplicate(true)
+		entry["currentInfluence"] = snappedf(current_influence, 0.001)
+		entry["relevanceScore"] = snappedf(relevance, 0.001)
+		candidates.append(entry)
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if float(a.get("relevanceScore", 0.0)) == float(b.get("relevanceScore", 0.0)):
+			return int(a.get("turn", 0)) > int(b.get("turn", 0))
+		return float(a.get("relevanceScore", 0.0)) > float(b.get("relevanceScore", 0.0))
+	)
+	if candidates.size() > limit:
+		return candidates.slice(0, limit)
+	return candidates
 
 static func player_faction(state: Dictionary) -> Dictionary:
 	for faction: Dictionary in state.get("factions", []):
@@ -209,26 +362,51 @@ static func system_has_or_queued_building(state: Dictionary, system_id: String, 
 			return true
 	return false
 
+static func queued_building_count_for_system(state: Dictionary, system_id: String) -> int:
+	var count: int = 0
+	for queue_item: Dictionary in state.get("constructionQueue", []):
+		if queue_item.get("systemId", "") == system_id and queue_item.get("kind", "") == "BUILDING":
+			count += 1
+	return count
+
 static func has_research(state: Dictionary, tech_id: String) -> bool:
 	for tech: Dictionary in state.get("technologies", []):
 		if tech.get("id", "") == tech_id and tech.get("status", "") == "RESEARCHED":
 			return true
 	return false
 
+static func add_researched_tech_to_faction(state: Dictionary, faction_id: String, tech_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	if tech_id == "":
+		return next_state
+	for faction_index: int in range(next_state.get("factions", []).size()):
+		var faction: Dictionary = next_state["factions"][faction_index]
+		if faction.get("id", "") != faction_id:
+			continue
+		var researched_tech_ids: Array = faction.get("researchedTechIds", [])
+		if not researched_tech_ids.has(tech_id):
+			researched_tech_ids.append(tech_id)
+		faction["researchedTechIds"] = researched_tech_ids
+		next_state["factions"][faction_index] = faction
+		break
+	return next_state
+
 static func colony_mode_data(mode: String) -> Dictionary:
 	return InitialData.colonization_modes().get(mode, {})
 
 static func system_yield_multiplier(system: Dictionary) -> float:
 	var colony_stage: String = system.get("colonyStage", "NONE")
+	var multiplier: float = 1.0
 	match colony_stage:
 		"OUTPOST":
-			return 0.45
+			multiplier = 0.45
 		"COLONY":
-			return 1.0
+			multiplier = 1.0
 		"CORE":
-			return 1.1
+			multiplier = 1.1
 		_:
-			return 1.0
+			multiplier = 1.0
+	return multiplier + float(system.get("ascensionWonderBonus", 0.0))
 
 static func scale_resources(bundle: Dictionary, multiplier: float) -> Dictionary:
 	return {
@@ -237,6 +415,15 @@ static func scale_resources(bundle: Dictionary, multiplier: float) -> Dictionary
 		"industry": int(round(float(bundle.get("industry", 0)) * multiplier)),
 		"energy": int(round(float(bundle.get("energy", 0)) * multiplier))
 	}
+
+static func apply_energy_shortage_penalty(bundle: Dictionary) -> Dictionary:
+	var adjusted: Dictionary = bundle.duplicate(true)
+	if int(adjusted.get("energy", 0)) >= 0:
+		return adjusted
+	adjusted["food"] = int(round(float(adjusted.get("food", 0)) * 0.5))
+	adjusted["minerals"] = int(round(float(adjusted.get("minerals", 0)) * 0.5))
+	adjusted["industry"] = int(round(float(adjusted.get("industry", 0)) * 0.5))
+	return adjusted
 
 static func colony_growth_speed(system: Dictionary, state: Dictionary) -> float:
 	var mode: Dictionary = colony_mode_data(system.get("colonizationMode", "STANDARD"))
@@ -249,13 +436,27 @@ static func colony_growth_speed(system: Dictionary, state: Dictionary) -> float:
 		tech_bonus += 0.1
 	return 0.34 + float(mode.get("growth_bonus", 0.0)) + habitability_bonus + supply_bonus + tech_bonus
 
+static func _colonization_preview_payload(mode_data: Dictionary, allowed: bool, reason: String) -> Dictionary:
+	return {
+		"allowed": allowed,
+		"reason": reason,
+		"cost": mode_data.get("cost", COLONY_COST),
+		"turns": int(mode_data.get("turns", 0)),
+		"initial_population": int(mode_data.get("initial_population", 0)),
+		"initial_stability": int(mode_data.get("initial_stability", 0)),
+		"initial_supply": int(mode_data.get("initial_supply", 0)),
+		"slot_cap": int(mode_data.get("slot_cap", 0)),
+		"maintenance": mode_data.get("maintenance", empty_resources()),
+		"risk": str(mode_data.get("risk", "未知"))
+	}
+
 static func colonization_preview(state: Dictionary, fleet_id: String, system_id: String, mode: String) -> Dictionary:
 	var player: Dictionary = player_faction(state)
 	var fleet: Dictionary = {}
 	var system: Dictionary = {}
 	var mode_data: Dictionary = colony_mode_data(mode)
 	if mode_data.is_empty():
-		return {"allowed": false, "reason": "闂備礁鎼悧婊勭閻愮儤鍋傞柍銉︽灱閺嬫棃鏌″鍐ㄥ婵絽鏈穱濠囶敍濡炶浜剧€规洖娲ㄩ、鍛存⒑?, "cost": COLONY_COST, "turns": 0}
+		return _colonization_preview_payload({}, false, "殖民模式无效。")
 	for entry: Dictionary in state.get("fleets", []):
 		if entry.get("id", "") == fleet_id:
 			fleet = entry
@@ -265,18 +466,26 @@ static func colonization_preview(state: Dictionary, fleet_id: String, system_id:
 			system = entry
 			break
 	if fleet.is_empty() or system.is_empty():
-		return {"allowed": false, "reason": "缂傚倸鍊搁崐鎼佸箹椤愶附鍎嶆い鏍仦閸ゅ霉閻撳海鎽犵悮婵嬫⒑閻熸壆鎽犻柣妤侇殔鍗遍柨鏃€鍎崇€垫煡鎮规担鍝ワ紞闁荤喐鍔曢埥澶愬箻閹颁礁鍓遍梺鍝勵儏閸熷瓨淇?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "未找到目标舰队或目标星系。")
 	if fleet.get("ownerId", "") != player.get("id", "") or fleet.get("systemId", "") != system_id:
-		return {"allowed": false, "reason": "闂傚倸鍊稿ú鐘诲磻閹剧粯鍋￠柡鍥ㄦ皑椤︼妇绱掔拋宕囩獢鐎殿噮鍓涘☉鐢稿川椤撶姴甯撻梻鍌氬€搁崯浼村窗閺嶎厼鐓樻俊銈呮噺閸嬧晜绻涢崱妤冪闂婎剦鍓熼弻锝夊煛婵犲倹鐏嶉梺缁樼壄缂嶄礁顕ｆ导瀛樺亜婵炲樊浜滈崢娆撴⒑?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "殖民舰队必须位于目标星系内。")
+	if str(fleet.get("mission", "IDLE")) == "COLONIZING":
+		return _colonization_preview_payload(mode_data, false, "该舰队已经投入殖民部署，无法重复启动殖民。")
 	if system.get("visibilityLevel", "") != "FULL":
-		return {"allowed": false, "reason": "闂傚鍋勫ú銈夊箠濮椻偓婵＄绠涘☉妯碱槯闂佸壊鍋呯换鍕汲濮樿埖鐓曢煫鍥ь儏婵′粙鎮介娆忓祮鐎殿喚澧楅幆鏃堝閳辨帗娲滅槐鎺楊敍濞戞碍鑿囬梺?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "需要对目标星系拥有完整视野后才能殖民。")
 	if system.get("ownerId", null) != null or system.get("colonyStage", "NONE") != "NONE":
-		return {"allowed": false, "reason": "闂備胶鍎甸弲鈺呭窗濡ゅ懏鍋夐柨婵嗩槸閸欏﹪鏌ｉ弮鈧浠嬪礂閸モ斁鍋撶憴鍕憙閻忓浚浜敐鐐烘晝閸屾氨顢呴梺缁樕戝鍧楀汲濞嗘挻鐓欓悗娑欘焽婢ь剚銇勯幒鎾剁煉鐎规洜鍏樻俊鎼佹晜閻愵剚鐦掓繝娈垮枟钃遍柛銊﹀▕閹虫瑩骞嬮敃鈧繚?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "该星系已被占领或已经处于殖民流程中。")
+	for other_fleet: Dictionary in state.get("fleets", []):
+		if other_fleet.get("systemId", "") != system_id:
+			continue
+		if other_fleet.get("ownerId", "") == player.get("id", ""):
+			continue
+		return _colonization_preview_payload(mode_data, false, "目标星系正被敌对舰队封锁。")
 	if not has_research(state, "tech_deep_colonization"):
-		return {"allowed": false, "reason": "闂傚倸鍊稿ú鐘诲磻閹剧粯鍋￠柡鍥ㄦ皑椤︼箓鏌涘Ο鑽ゃ€掗柍褜鍓涢幊鎾诲嫉椤掑嫬鍨傛慨妯挎硾閺勩儵鏌ц箛姘煎殐闁衡偓閵婏妇绠鹃柨婵嗙墔閸氼偊鏌嶇憴鍕ⅹ闁崇粯鎹囧浠嬪Ω瑜庨惁婊堟⒑?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "尚未完成深空殖民科技，无法执行殖民。")
 	if not can_afford(player.get("resources", {}), mode_data.get("cost", COLONY_COST)):
-		return {"allowed": false, "reason": "闂佽崵濮嶉崘顭戜痪缂備緡鐓堥崰妤冪矙婢跺鍚嬮柛顐ｇ箓閺嬫瑩姊洪幐搴ｂ槈闁哄牜鍓欒灋闁靛牆鎳夐弸鏍煛閸モ晛浠滅紒鍙夋そ閹顦归柡鈧柆宥嗗仼闁告繂瀚峰鈺呮煙鐎涙鎲块柛?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
-	return {"allowed": true, "reason": "闂備礁鎲￠悷顖炲垂閹峰被浜归柛灞剧矋鐏忓酣姊洪崹顕呭剳闁哄棭鍋呴幈銊ノ熺拠鑼户闂?, "cost": mode_data.get("cost", COLONY_COST), "turns": int(mode_data.get("turns", 0))}
+		return _colonization_preview_payload(mode_data, false, "资源不足，无法启动殖民。")
+	return _colonization_preview_payload(mode_data, true, "满足殖民条件。")
 
 static func next_era(turn: int) -> String:
 	if turn < 20:
@@ -330,7 +539,7 @@ static func add_diplomatic_message(
 	attachments: Dictionary = {},
 	security_settings: Dictionary = {}
 ) -> Dictionary:
-	var next_state: Dictionary = duplicate_state(state)
+	var next_state: Dictionary = _append_interaction_memory(state, title, content, [sender_id] + target_ids, content_type, maxi(1, target_ids.size()))
 	var sender: Dictionary = get_faction_by_id(next_state, sender_id)
 	var diplomatic_messages: Array = next_state.get("diplomaticMessages", [])
 	diplomatic_messages.push_front({
@@ -363,7 +572,7 @@ static func add_diplomatic_memory(
 	category: String = "EVENT",
 	importance: int = 1
 ) -> Dictionary:
-	var next_state: Dictionary = duplicate_state(state)
+	var next_state: Dictionary = _append_interaction_memory(state, title, summary, participants, category, importance)
 	var memories: Array = next_state.get("diplomaticMemories", [])
 	memories.push_front({
 		"id": "dmem_%s_%s" % [str(next_state.get("turn", 1)), str(memories.size() + 1)],
@@ -373,7 +582,10 @@ static func add_diplomatic_memory(
 		"participants": participants,
 		"category": category,
 		"importance": importance,
+		"relatedLongTermMemories": related_long_term_memories(next_state, "%s %s" % [title, summary], participants)
 	})
+	if memories.size() > 24:
+		memories = memories.slice(0, 24)
 	next_state["diplomaticMemories"] = memories
 	return next_state
 
@@ -416,11 +628,13 @@ static func visible_diplomatic_memories_for_player(state: Dictionary) -> Array:
 	var result: Array = []
 	for memory: Dictionary in state.get("diplomaticMemories", []):
 		var participants: Array = memory.get("participants", [])
+		var memory_view: Dictionary = memory.duplicate(true)
+		memory_view["relatedLongTermMemories"] = related_long_term_memories(state, "%s %s" % [str(memory.get("title", "")), str(memory.get("summary", ""))], participants)
 		if participants.has("f_player") or memory.get("category", "") == "PUBLIC":
-			result.append(memory)
+			result.append(memory_view)
 			continue
 		if int(memory.get("importance", 1)) >= 3:
-			result.append(memory)
+			result.append(memory_view)
 	return result
 
 static func interception_capability(state: Dictionary) -> float:
@@ -444,7 +658,7 @@ static func interception_report(state: Dictionary) -> Dictionary:
 		"restricted": restricted_rate,
 		"secret": secret_rate,
 		"encrypted": encrypted_rate,
-		"status": "濠德板€曢崐纭呮懌闂佸搫鎳岄崕鐢稿箚閸曨垰绠ｆ繝闈涙搐閸撳墎绱? if capability >= 0.65 else "闂佸搫顦悧蹇涘箠閹炬眹鈧倿濡搁埡鍌氬壆闂佺懓鐡ㄧ换鍐磿閺冨牊鈷? if capability >= 0.35 else "闂備胶纭堕弲鐐测枍閿濆鈧線宕ㄧ€涙ê鍓梺鐟扮摠缁诲啴宕?
+		"status": "截获能力优秀" if capability >= 0.65 else "截获能力稳定" if capability >= 0.35 else "截获能力薄弱"
 	}
 
 static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Array:
@@ -456,18 +670,18 @@ static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Arra
 			"turn": int(report.get("turn", 0)),
 			"priority": 5,
 			"category": "COMBAT",
-			"title": str(report.get("title", "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍嵁鎼淬劌唯闁靛绠戦弳?)),
-			"summary": "%s vs %s / %s / 闂備礁鎲￠幐鎾疾濞嗘垹绀婇柟杈剧畱缁狅絾淇婇姘儓妞?%s%%" % [
-				str(report.get("attackerName", "闂佸搫顦弲婊呯矙閹烘鏋佸Δ锝呭暙濡?)),
-				str(report.get("defenderName", "闂傚倸鍊搁崯顖濄亹閸愵喗鍋╃憸鏂款嚕?)),
-				"闂備浇澹堝▍鏇犲垝瀹€鍕槬? if report.get("victory", false) else "濠电姰鍨煎▔娑樼暦椤掑嫬鏄?,
+			"title": str(report.get("title", "战斗报告")),
+			"summary": "%s vs %s / %s / 剩余战力 %s%%" % [
+				str(report.get("attackerName", "进攻方")),
+				str(report.get("defenderName", "防守方")),
+				"进攻方获胜" if report.get("victory", false) else "防守方守住",
 				str(report.get("remainingPower", 0))
 			]
 		})
 	for event_item: Dictionary in state.get("activeNarrativeEvents", []):
 		if event_item.get("status", "ACTIVE") != "ACTIVE":
 			continue
-		var event_system_name: String = str(event_item.get("systemId", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т閸欏﹪鏌ｉ弮鈧浠嬪礂?))
+		var event_system_name: String = str(event_item.get("systemId", "未知星系"))
 		for system: Dictionary in state.get("starSystems", []):
 			if system.get("id", "") == event_item.get("systemId", ""):
 				event_system_name = str(system.get("name", event_system_name))
@@ -476,7 +690,7 @@ static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Arra
 			"turn": int(event_item.get("turnCreated", state.get("turn", 1))),
 			"priority": 4,
 			"category": "EVENT",
-			"title": str(event_item.get("title", "闂備礁鎲￠悷锕傛偡閵堝洩濮抽柕濠忓椤╂煡鎮楅敐鍌涙珕妞?)),
+			"title": str(event_item.get("title", "星系事件")),
 			"summary": "%s / %s" % [event_system_name, str(event_item.get("summary", ""))]
 		})
 	for intervention: Dictionary in state.get("activeInterventions", []):
@@ -487,14 +701,14 @@ static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Arra
 			"priority": 3,
 			"category": "INTERVENTION",
 			"title": str(intervention.get("type", "DIRECTOR")),
-			"summary": "闂備礁鎲￠幐鎾疾濞嗘垹绀?%s 闂備焦鎮堕崕鎶藉磻濞戙垹绠?/ 闁诲孩顔栭崰鏍箹椤愩倐鍋?%s" % [str(intervention.get("remainingTurns", 0)), str(intervention.get("intensity", 0.0))]
+			"summary": "剩余回合 %s / 强度 %s" % [str(intervention.get("remainingTurns", 0)), str(intervention.get("intensity", 0.0))]
 		})
 	for memory: Dictionary in visible_memories.slice(0, min(6, visible_memories.size())):
 		feed.append({
 			"turn": int(memory.get("turn", 0)),
 			"priority": 2 + int(memory.get("importance", 1)),
 			"category": "DIPLOMACY",
-			"title": str(memory.get("title", "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏃傚亾婵ジ鏌℃径搴㈢《缂?)),
+			"title": str(memory.get("title", "外交记忆")),
 			"summary": str(memory.get("summary", ""))
 		})
 	for message: Dictionary in visible_messages.slice(0, min(6, visible_messages.size())):
@@ -502,7 +716,7 @@ static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Arra
 			"turn": int(message.get("turn", 0)),
 			"priority": 2,
 			"category": "SIGNAL",
-			"title": str(message.get("title", "闂傚倷绶￠崑鍛┍濞差亶鏁?)),
+			"title": str(message.get("title", "截获信号")),
 			"summary": "%s / %s" % [str(message.get("visibilityLevel", "PUBLIC")), str(message.get("content", ""))]
 		})
 	for message: Dictionary in state.get("messages", []).slice(0, min(6, state.get("messages", []).size())):
@@ -510,7 +724,7 @@ static func recent_intelligence_feed(state: Dictionary, limit: int = 10) -> Arra
 			"turn": int(message.get("turn", 0)),
 			"priority": 1,
 			"category": str(message.get("type", "EVENT")),
-			"title": str(message.get("title", "闂備浇顕栭崹浼村箠韫囨梹鍙?)),
+			"title": str(message.get("title", "系统消息")),
 			"summary": str(message.get("content", ""))
 		})
 	feed.sort_custom(_compare_intelligence_entry)
@@ -525,34 +739,34 @@ static func _compare_intelligence_entry(a: Dictionary, b: Dictionary) -> bool:
 
 static func parse_player_diplomatic_intent(message_text: String) -> Dictionary:
 	var lowered: String = message_text.to_lower()
-	if "濠电偛鐡ㄧ划宥囨暜婵犲嫮绠斿璺侯儑閻熷綊鏌ｉ姀銈嗘锭鐞? in message_text or "闂備胶顭堥鍡欏垝鎼淬垹顕遍柍? in message_text or "ceasefire" in lowered or "non aggression" in lowered:
+	if "停火" in message_text or "互不侵犯" in message_text or "ceasefire" in lowered or "non aggression" in lowered:
 		return {"type": "TREATY", "treaty": "NON_AGGRESSION", "tone": "friendly", "trust_delta": 6}
-	if "缂傚倷绀侀ˇ浼村垂瑜版帗鍋夋繛宸簻绾偓闂婎偄娲﹂幐楣冨汲? in message_text or "闂備浇澹堟ご鎼佸蓟閵娾晛绠栭幖娣妽閸庢﹢鏌￠崘銊モ偓鐢稿极閳? in message_text or "research" in lowered:
+	if "科研协定" in message_text or "联合研究" in message_text or "research" in lowered:
 		return {"type": "TREATY", "treaty": "RESEARCH_ACCORD", "tone": "friendly", "trust_delta": 5}
-	if "闂備礁鎲￠懝楣冩儔閻撳篃? in message_text or "alliance" in lowered:
+	if "同盟" in message_text or "结盟" in message_text or "alliance" in lowered:
 		return {"type": "TREATY", "treaty": "ALLIANCE", "tone": "friendly", "trust_delta": 7}
-	if "闂佽崵濮甸崝鏇㈠箟閳ユ緞? in message_text or "闂備礁鎲￠懝楣冩偋閸涱垳绀? in message_text or "trade" in lowered or "peace" in lowered or "闂備礁鎲＄划宀勬嚐椤栫偞鐓? in message_text:
+	if "贸易" in message_text or "通商" in message_text or "trade" in lowered or "peace" in lowered or "和平" in message_text:
 		return {"type": "TRADE", "tone": "friendly", "trust_delta": 5}
-	if "濠电姷鏁搁崑妯好归崶顒€纾? in message_text or "闂備胶鎳撻悺銊ф箒缂? in message_text or "闂佽娴峰▍銏㈠緤妤ｅ啫鍨? in message_text or "attack" in lowered or "war" in lowered:
+	if "进攻" in message_text or "宣战" in message_text or "威胁" in message_text or "attack" in lowered or "war" in lowered:
 		return {"type": "WARNING", "tone": "firm", "trust_delta": -8}
 	return {"type": "MESSAGE", "tone": "neutral", "trust_delta": 1}
 
 static func describe_player_diplomatic_intent(message_text: String) -> Dictionary:
 	var intent: Dictionary = parse_player_diplomatic_intent(message_text)
 	var intent_type: String = str(intent.get("type", "MESSAGE"))
-	var label: String = "濠电偞鍨堕幐鎾磻閹剧粯鐓犻柛鎾村絻閸樺憡鎱ㄥ鍫㈢暠闂?
-	var detail: String = "濠电偞娼欓崥瀣┍濞差亷缍栭柨鏃傚亾閸犲棝鏌涢埄鍐╃缂佲偓鐎ｎ喗鐓涢柛婊€绀佸▍宥夋煃瑜滈崜姘卞枈瀹ュ鍎楅柨鐔哄У閻掔粯鎱ㄥΟ鍝勨挃缂佲偓婢跺ň妲堥柟鎯х摠椤銇勯埡瀣暢闁靛洦鍔欏畷锟犳倷鐎涙ê鍔岄梺鍝勵槺閸嬬娀顢氳缁傚秹寮撮悢琛℃敵闂佺偨鍎卞璺虹暦閺屻儲鐓?
+	var label: String = "普通致函"
+	var detail: String = "这条信息会被视为常规外交接触，主要用于表达立场，不会直接触发条约或贸易意图。"
 	if intent_type == "TREATY":
 		var treaty_id: String = str(intent.get("treaty", "NON_AGGRESSION"))
 		var treaty_label: String = InitialData.treaty_labels().get(treaty_id, treaty_id)
-		label = "闂備礁鎼¨鈧紒杈ㄦ礈閳ь剝顫夋繛濠囩嵁閹捐绠涙い鏍电到閺?
-		detail = "缂傚倷绶￠崹闈涚暦閻㈤潧鍨濋柣鎴灻杈ㄦ叏濮楀棗骞栭幆鐔兼煛婢跺棙娅嗛柣鐕傜畵椤㈡瑥鐣濋埀顒勫箯閻樻祴鏀藉┑鐘插缂嶅﹥绻?%s 闂備礁婀辩划顖炲礉濮椻偓椤㈡瑩宕ㄧ€涙ɑ娅栭柣蹇曞仜閳ь剛鍠庨悵顖炴煟閻斿摜鎳曠紒鐘冲灱閵囨劙宕掑鍏兼〃闂佹寧绻傞幊鎰兜閳ь剟姊洪崫鍕垫缂佽鲸娲滈埀顒傛嚀绾绢參骞忛悩璇茬妞ゅ繐瀚幐銈夋⒑? % treaty_label
+		label = "条约提案"
+		detail = "这条信息会被识别为对“%s”的正式提案，AI 会按当前关系、战略处境和人格倾向进行回应。" % treaty_label
 	elif intent_type == "TRADE":
-		label = "闂佽崵濮甸崝鏇㈠箟閳ユ緞锝呂旈崨顓⌒曢梺鍓插亝缁海绮?
-		detail = "缂傚倷绶￠崹闈涚暦閻㈤潧鍨濋柣鎴灻杈ㄦ叏濮楀棗骞栭幆鐔兼煛婢跺棙娅嗛柣鐕傜畵椤㈡瑥鐣濋埀顒勫箯閻樻祴鏀藉┑鐘插缂嶅﹥绻涢幋鐐村磳缂傚倹宀搁弻銊╁Χ婢跺﹤寮烽梺鍦亾濞兼瑩鎮樺Δ鍛厱婵﹩鍓涙晶鏃傜磽瀹ュ棙鈷愮紒宀勪憾閸ㄩ箖宕橀幓鎺嗘瀼闂備焦瀵х粙鎴﹀嫉椤掑啨浜瑰〒姘ｅ亾鐎规洩绻濆畷鎯邦槻鐟滄壆濮风槐鎺楊敍濠垫劕娈梺閫炲苯澧柛搴㈠▕楠炲啫顭ㄩ崼婢?
+		label = "贸易请求"
+		detail = "这条信息会被识别为贸易或和平导向接触，更容易提升信任并触发资源交换相关反馈。"
 	elif intent_type == "WARNING":
-		label = "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏃傚亾婵即鏌ㄩ弴妤€浜鹃梺?
-		detail = "缂傚倷绶￠崹闈涚暦閻㈤潧鍨濋柣鎴灻杈ㄦ叏濮楀棗骞栭幆鐔兼煛婢跺棙娅嗛柣鐕傜畵椤㈡瑥鐣濋埀顒勫箯閻樻祴鏀藉┑鐘插缂嶅﹥绻涢幋鐐村碍闁圭⒈鍋勯蹇旀綇閳哄倸鍘瑰銈嗗笒閸犳岸宕濋崨瀛樼厱婵炴垶锕╅悡顓犵磼鏉堛劎绠炴慨濠呮椤撳ジ宕熼鐘橈綁姊虹粙璺ㄧ缁剧虎鍙冮弻鍫ュ箻椤旀儳绁﹂梺鍏兼倐濞佳呭緤閻熸嫈鏃堝磼濞戣京鍔烽梺閫涚串缁蹭粙顢氶敐澶嬪亹闁圭粯甯╅崬娲⒑?
+		label = "强硬警告"
+		detail = "这条信息会被视为威胁或战争信号，通常会降低信任，并可能推动 AI 进入警戒或敌对姿态。"
 	return {
 		"label": label,
 		"detail": detail,
@@ -634,6 +848,51 @@ static func create_pending_proposal(state: Dictionary, sender_id: String, target
 	next_state = add_diplomatic_memory(next_state, title, summary, [sender_id, target_id], "PROPOSAL", 2)
 	return next_state
 
+static func find_pending_proposal_id(state: Dictionary, sender_id: String, target_id: String, proposal_type: String) -> String:
+	for proposal: Dictionary in state.get("pendingProposals", []):
+		if proposal.get("senderFactionId", "") == sender_id and proposal.get("targetFactionId", "") == target_id and proposal.get("proposalType", "") == proposal_type and proposal.get("status", "PENDING") == "PENDING":
+			return str(proposal.get("id", ""))
+	return ""
+
+static func end_war_between(state: Dictionary, faction_a_id: String, faction_b_id: String, summary: String = "") -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var treaties: Array = next_state.get("treaties", [])
+	for index: int in range(treaties.size()):
+		var treaty: Dictionary = treaties[index]
+		var touches: bool = (treaty.get("sourceFactionId", "") == faction_a_id and treaty.get("targetFactionId", "") == faction_b_id) or (treaty.get("sourceFactionId", "") == faction_b_id and treaty.get("targetFactionId", "") == faction_a_id)
+		if not touches:
+			continue
+		if treaty.get("type", "") == "WAR_STATE" and treaty.get("status", "") == "ACTIVE":
+			treaty["status"] = "ENDED"
+			treaty["summary"] = "War ended"
+			treaties[index] = treaty
+	next_state["treaties"] = treaties
+	if not has_treaty(next_state, faction_a_id, faction_b_id, "PEACE_TREATY"):
+		var next_treaties: Array = next_state.get("treaties", [])
+		next_treaties.append({
+			"id": "treaty_%s" % str(Time.get_ticks_msec()),
+			"sourceFactionId": faction_a_id,
+			"targetFactionId": faction_b_id,
+			"type": "PEACE_TREATY",
+			"status": "ACTIVE",
+			"proposedOnTurn": next_state.get("turn", 1),
+			"expiresOnTurn": int(next_state.get("turn", 1)) + 10,
+			"summary": summary if summary != "" else "Peace treaty accepted by both sides"
+		})
+		next_state["treaties"] = next_treaties
+	for index: int in range(next_state["relationships"].size()):
+		var relation: Dictionary = next_state["relationships"][index]
+		var touches_relation: bool = (relation.get("factionAId", "") == faction_a_id and relation.get("factionBId", "") == faction_b_id) or (relation.get("factionAId", "") == faction_b_id and relation.get("factionBId", "") == faction_a_id)
+		if not touches_relation:
+			continue
+		var trust: int = clamp(int(relation.get("trust", 0)) + 18, -100, 100)
+		relation["trust"] = trust
+		relation["tension"] = max(0, int(relation.get("tension", 0)) - 35)
+		relation["level"] = relation_level(trust)
+		next_state["relationships"][index] = relation
+	next_state = add_diplomatic_memory(next_state, "和平达成", summary if summary != "" else "双方结束战争并签署了和平条款。", [faction_a_id, faction_b_id], "AGREEMENT", 3)
+	return next_state
+
 static func accept_pending_proposal(state: Dictionary, proposal_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var target_proposal: Dictionary = {}
@@ -650,6 +909,23 @@ static func accept_pending_proposal(state: Dictionary, proposal_id: String) -> D
 	var sender_id: String = target_proposal.get("senderFactionId", "")
 	var target_id: String = target_proposal.get("targetFactionId", "")
 	var proposal_type: String = target_proposal.get("proposalType", "")
+	if proposal_type == "ULTIMATUM":
+		for index: int in range(next_state["relationships"].size()):
+			var relation: Dictionary = next_state["relationships"][index]
+			var touches: bool = (relation.get("factionAId", "") == sender_id and relation.get("factionBId", "") == target_id) or (relation.get("factionAId", "") == target_id and relation.get("factionBId", "") == sender_id)
+			if not touches:
+				continue
+			var trust: int = clamp(int(relation.get("trust", 0)) - 6, -100, 100)
+			relation["trust"] = trust
+			relation["fear"] = int(relation.get("fear", 0)) + 10
+			relation["tension"] = max(0, int(relation.get("tension", 0)) - 10)
+			relation["level"] = relation_level(trust)
+			next_state["relationships"][index] = relation
+		next_state = add_diplomatic_memory(next_state, "最后通牒被接受", "%s 接受了最后通牒，战争暂时被避免。" % get_faction_by_id(next_state, target_id).get("name", target_id), [sender_id, target_id], "AGREEMENT", 2)
+		return add_message(next_state, "最后通牒", "%s 接受了最后通牒，战争暂时被避免。" % get_faction_by_id(next_state, target_id).get("name", target_id), "DIPLOMATIC")
+	if proposal_type == "PEACE_TALK":
+		next_state = end_war_between(next_state, sender_id, target_id, target_proposal.get("summary", "双方已接受停火条件。"))
+		return add_message(next_state, "和平达成", "%s" % target_proposal.get("summary", "双方已接受停火条件。"), "DIPLOMATIC")
 	if proposal_type in ["TRADE_PACT", "NON_AGGRESSION", "RESEARCH_ACCORD", "ALLIANCE"] and not has_treaty(next_state, sender_id, target_id, proposal_type):
 		var treaties: Array = next_state.get("treaties", [])
 		treaties.append({
@@ -673,9 +949,9 @@ static func accept_pending_proposal(state: Dictionary, proposal_id: String) -> D
 		relation["utility"] = int(relation.get("utility", 0)) + 6
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
-	next_state = update_diplomatic_profile(next_state, sender_id, "friendly", 6, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦粻鎶芥煏婢跺牆鍔氱紓宥佸亾濠电偛鐡ㄧ划灞轿涘▎鎾冲瀭婵犲﹤鐗嗗Λ姗€鎮峰▎蹇擃仼缂佽尪顫夋穱濠偽旈埀顒勬偋閻愬灚顫曟繝闈涱儏閻銇勯弽銊х煁闁糕晜绋撶槐鎾寸瑹閸パ冪闁汇埄鍨扮紞濠傜暦濠靛惟闁挎梻鏅崙钘夆攽閻戝洨鍒扮€规洦鍓熼獮鍐╂償閵忊€愁€?)
-	next_state = add_diplomatic_memory(next_state, "闂備礁婀辩划顖炲礉閺嶎厹鈧礁顓奸崪浣告櫊闂佸憡鐟ラˇ顖涘緞瀹ュ鐓?, "%s 闁诲氦顫夐悺鏇犱焊椤忓牞缍栭柨鏇炲€归崑婵嬫煃鏉炴壆璐伴柛鐔插亾闂備浇顫夋禍浠嬪磿鏉堫偁浜归柛顐犲劚杩? % target_proposal.get("title", "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏇炲€哥粻鐢告煙闁箑寮鹃柡鈧?), [sender_id, target_id], "AGREEMENT", 3)
-	return add_message(next_state, "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏇炲€哥粻鐢告煙闁箑寮鹃柡鈧幎鑺ョ厵闁诡厽甯掗崝姘辨喐?, "濠电偠鎻徊鎸庢叏閻㈠灚鏆滈柟缁㈠枛閻淇婇悙鎻掆挃闁?%s闂? % target_proposal.get("title", "濠电偞鍨堕幐鎾磻閹炬剚娓婚柕鍫濈墱濞兼劗鎲告０浣侯槮妞?), "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, sender_id, "friendly", 6, "提案已被接受。")
+	next_state = add_diplomatic_memory(next_state, "提案被接受", "%s 已被接受。" % target_proposal.get("title", "外交提案"), [sender_id, target_id], "AGREEMENT", 3)
+	return add_message(next_state, "外交进展", "%s 接受了提案：%s" % [get_faction_by_id(next_state, target_id).get("name", target_id), target_proposal.get("title", "外交提案")], "DIPLOMATIC")
 
 static func reject_pending_proposal(state: Dictionary, proposal_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -692,6 +968,10 @@ static func reject_pending_proposal(state: Dictionary, proposal_id: String) -> D
 		return next_state
 	var sender_id: String = target_proposal.get("senderFactionId", "")
 	var target_id: String = target_proposal.get("targetFactionId", "")
+	var proposal_type: String = target_proposal.get("proposalType", "")
+	if proposal_type == "ULTIMATUM":
+		next_state = add_diplomatic_memory(next_state, "最后通牒被拒绝", "%s 的最后通牒遭到拒绝，战争随即爆发。" % get_faction_by_id(next_state, sender_id).get("name", sender_id), [sender_id, target_id], "WAR", 4)
+		return declare_war_on_faction(next_state, sender_id, target_id)
 	for index: int in range(next_state["relationships"].size()):
 		var relation: Dictionary = next_state["relationships"][index]
 		var touches: bool = (relation.get("factionAId", "") == sender_id and relation.get("factionBId", "") == target_id) or (relation.get("factionAId", "") == target_id and relation.get("factionBId", "") == sender_id)
@@ -701,9 +981,9 @@ static func reject_pending_proposal(state: Dictionary, proposal_id: String) -> D
 		relation["trust"] = trust
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
-	next_state = update_diplomatic_profile(next_state, sender_id, "firm", -5, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦粻顖炴煙閻戞ɑ鈷掗柛妤佺矊闇夋繝濠傚暞椤ョ偤鏌涢妸锔剧煉鐎殿噮鍓涢幉鎾礋椤愩倕鈧帒鈹戦埄鍐炬當闁绘鍋熷Σ鎰攽鐎ｎ偒姊块梺閫炲苯澧伴柟鑼缁楃喖鍩€椤掑嫬闂柟闂寸濡﹢鏌熷畡鎵伇婵″弶鍨甸湁闁稿繒鍘ч婊勩亜閺傚搫浜炬繝娈垮枟缁哄潡宕曢幎钘夌厴闁哄稁鍘介埛?)
-	next_state = add_diplomatic_memory(next_state, "闂備礁婀辩划顖炲礉閺嶎厹鈧礁顓奸崶銊ヤ粡濡炪倖鍔х徊浠嬫偟閺囩姷纾?, "%s 闂佽崵鍋為崙褰掑磻閸℃瑦鏆滈柧蹇撳帨閸嬫挾娑甸崨顓犲帿闁诲孩鑹惧Λ娑氭閹烘垟鏀介柛鏇樺妼娴? % target_proposal.get("title", "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏇炲€哥粻鐢告煙闁箑寮鹃柡鈧?), [sender_id, target_id], "PROPOSAL", 2)
-	return add_message(next_state, "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏇炲€哥粻鐢告煙闁箑寮鹃柡鈧幎鑺ョ厵闂佸灝顑呯粭褏绱?, "濠电偠鎻徊鎸庢叏閻㈢鍋撳顒侇棤缂佽鲸甯掗埞鎴﹀川椤栨碍娅?%s闂? % target_proposal.get("title", "濠电偞鍨堕幐鎾磻閹炬剚娓婚柕鍫濈墱濞兼劗鎲告０浣侯槮妞?), "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, sender_id, "firm", -5, "提案遭到拒绝。")
+	next_state = add_diplomatic_memory(next_state, "提案被拒绝", "%s 被拒绝。" % target_proposal.get("title", "外交提案"), [sender_id, target_id], "PROPOSAL", 2)
+	return add_message(next_state, "外交进展", "%s 拒绝了提案：%s" % [get_faction_by_id(next_state, target_id).get("name", target_id), target_proposal.get("title", "外交提案")], "DIPLOMATIC")
 
 static func expire_pending_proposals(state: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -718,7 +998,7 @@ static func expire_pending_proposals(state: Dictionary) -> Dictionary:
 		proposal["status"] = "EXPIRED"
 		proposals[index] = proposal
 		changed = true
-		next_state = add_diplomatic_memory(next_state, "闂備礁婀辩划顖炲礉閺嶎厹鈧礁顓奸崱妯规唉闂佹悶鍎崝宥夊春?, "%s 闁诲海鎳撻幉陇銇愰崘顭嬪搫顭ㄩ崨顔藉劚闂佸憡渚楅崰妤吽囪椤潡骞嗘导鏉戞懙闂佸搫鎳岄崕鍨繆? % proposal.get("title", "濠电姰鍨奸崺鏍偋閺傛娼╅柨鏇炲€哥粻鐢告煙闁箑寮鹃柡鈧?), [proposal.get("senderFactionId", ""), proposal.get("targetFactionId", "")], "PROPOSAL", 1)
+		next_state = add_diplomatic_memory(next_state, "提案过期", "%s 因超过期限而自动失效。" % proposal.get("title", "外交提案"), [proposal.get("senderFactionId", ""), proposal.get("targetFactionId", "")], "PROPOSAL", 1)
 	if changed:
 		next_state["pendingProposals"] = proposals
 	return next_state
@@ -746,6 +1026,53 @@ static func reachable_systems(state: Dictionary, fleet_id: String) -> Array:
 			return connected_to(state, fleet.get("systemId", ""))
 	return []
 
+static func reachable_system_details(state: Dictionary, fleet_id: String) -> Array:
+	var fleet: Dictionary = {}
+	for item: Dictionary in state.get("fleets", []):
+		if item.get("id", "") == fleet_id:
+			fleet = item
+			break
+	if fleet.is_empty():
+		return []
+	var current_system_id: String = str(fleet.get("systemId", ""))
+	var result: Array = []
+	for target_system_id: String in connected_to(state, current_system_id):
+		for lane: Dictionary in state.get("hyperlanes", []):
+			var direct: bool = lane.get("startSystemId", "") == current_system_id and lane.get("endSystemId", "") == target_system_id
+			var reverse: bool = lane.get("endSystemId", "") == current_system_id and lane.get("startSystemId", "") == target_system_id
+			if not (direct or reverse):
+				continue
+			result.append({
+				"systemId": target_system_id,
+				"systemName": system_name_by_id(state, target_system_id),
+				"laneType": str(lane.get("type", "LANE")),
+				"traversalCost": int(lane.get("traversalCost", 1)),
+				"bandwidth": int(lane.get("bandwidth", 0)),
+				"fleetSize": int(fleet.get("ships", []).size()),
+				"fitsBandwidth": int(lane.get("bandwidth", 0)) <= 0 or int(fleet.get("ships", []).size()) <= int(lane.get("bandwidth", 0))
+			})
+			break
+	return result
+
+static func lane_traversal_cost(state: Dictionary, from_system_id: String, to_system_id: String) -> int:
+	for lane: Dictionary in state.get("hyperlanes", []):
+		var direct: bool = lane.get("startSystemId", "") == from_system_id and lane.get("endSystemId", "") == to_system_id
+		var reverse: bool = lane.get("endSystemId", "") == from_system_id and lane.get("startSystemId", "") == to_system_id
+		if direct or reverse:
+			return int(lane.get("traversalCost", 1))
+	return 1
+
+static func progress_fleet_movement_cooldowns(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	for fleet_index: int in range(next_state.get("fleets", []).size()):
+		var fleet: Dictionary = next_state["fleets"][fleet_index]
+		var cooldown: int = int(fleet.get("movementCooldown", 0))
+		if cooldown <= 0:
+			continue
+		fleet["movementCooldown"] = cooldown - 1
+		next_state["fleets"][fleet_index] = fleet
+	return next_state
+
 static func fleet_mission_label(mission: String) -> String:
 	return str(InitialData.fleet_mission_labels().get(mission, mission))
 
@@ -759,7 +1086,7 @@ static func set_fleet_mission(state: Dictionary, fleet_id: String, mission: Stri
 		return next_state
 	fleet["mission"] = mission
 	next_state["fleets"][fleet_index] = fleet
-	return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晜閻ｅ矈娴勯柣鐘叉处瑜板啴锝為妶澶嬬厸闁搞儜鍛喖闂?, "%s 闁诲海鎳撻幉陇銇愰崘顔煎瀭闊洦绋戠粻鍙夈亜椤愵偄寮ㄧ紒鈧?s闂? % [str(fleet.get("name", "闂備礁銈搁弲鏌ュ础閸愬弬?)), fleet_mission_label(mission)], "SYSTEM")
+	return add_message(next_state, "舰队任务已更新", "%s 当前任务调整为 %s。" % [str(fleet.get("name", "玩家舰队")), fleet_mission_label(mission)], "SYSTEM")
 
 static func start_research(state: Dictionary, tech_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -793,7 +1120,7 @@ static func start_research(state: Dictionary, tech_id: String) -> Dictionary:
 	next_state["technologies"] = technologies
 	next_state["currentResearchId"] = tech_id
 	next_state["researchProgress"] = 0.0
-	return add_message(next_state, "闁诲孩顔栭崰鎺楀磻閹炬枼鏀芥い鏃傗拡閸庢垿鏌ｉ弽顒侇仩缂?, "闁诲海鎳撻幉陇銇愰崘顏咁潟闁瑰鍋為崣蹇涙倵閿濆骸澧伴柛鈺嬬磿缁?%s闂? % target.get("name", ""), "SYSTEM")
+	return add_message(next_state, "研究已启动", "当前开始研究 %s。" % target.get("name", ""), "SYSTEM")
 
 static func cancel_research(state: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -820,7 +1147,7 @@ static func cancel_research(state: Dictionary) -> Dictionary:
 		next_state["technologies"] = technologies
 		next_state["currentResearchId"] = null
 		next_state["researchProgress"] = 0.0
-		return add_message(next_state, "闂備焦妞块崰妤€顫忔繝姘厴闁圭儤顨呴惌妤呮煛瀹ュ啫濡块崯?, "%s 闁诲海鎳撻幉陇銇愰崘顓滀汗闁搞儜鈧Σ鍫ユ煕椤愵偄澧扮紒鈧径鎰骇闁冲搫鍊归ˉ鍡欑磼?%s 闁诲氦顫夐幃鍫曞磿閹殿喚绠旈柣鏃傚帶杩? % [tech.get("name", ""), str(refund)], "SYSTEM")
+		return add_message(next_state, "研究已取消", "%s 已取消研究，返还 %s 工业。" % [tech.get("name", ""), str(refund)], "SYSTEM")
 	return next_state
 
 static func ship_stats(ship_type: String, state: Dictionary, owner_id: String) -> Dictionary:
@@ -838,7 +1165,7 @@ static func ship_stats(ship_type: String, state: Dictionary, owner_id: String) -
 static func create_ship(ship_type: String, name: String, state: Dictionary, owner_id: String) -> Dictionary:
 	var stats: Dictionary = ship_stats(ship_type, state, owner_id)
 	return {
-		"id": "ship_%s" % str(Time.get_ticks_msec()),
+		"id": make_state_id(state, "ship"),
 		"type": ship_type,
 		"name": name,
 		"hp": stats["hp"],
@@ -941,7 +1268,7 @@ static func split_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 		return next_state
 	var ships: Array = fleet.get("ships", [])
 	if ships.size() < 2:
-		return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾氨顔嗛梺绯曞墲椤ㄥ懘鎮楃拠宸唵闁诡垱澹嗙花鍧楁偡?, "闂備胶鍘ч崲鏌ュ疮閸ф鍎嶆い鏍仦椤ュ棝鏌嶈閸撴盯骞夐悧鍫熷闁汇値鍨幏锟犳⒑閼归偊娼愭い顓炵墦瀹曞搫鐣濋崟顒€娈濋柣鐔哥懃鐎氼剟路閸涘瓨鐓犻柛鎰ゴ閸嬫捇鎮㈤搹璇″晪闂佽崵鍋炵粙鎴﹀嫉椤掍礁鍨旈柛顐ｆ礀缁€鍡涙煕閳╁啫濮€闁?, "SYSTEM")
+		return add_message(next_state, "分舰队失败", "舰队至少需要 2 艘舰船才能执行分舰队。", "SYSTEM")
 	var split_count: int = maxi(1, int(floor(float(ships.size()) / 2.0)))
 	var detached: Array = []
 	var remain: Array = []
@@ -954,7 +1281,7 @@ static func split_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 	next_state["fleets"][fleet_index] = fleet
 	var new_fleet: Dictionary = {
 		"id": "fleet_split_%s" % str(Time.get_ticks_msec()),
-		"name": "%s-闂備礁鎲＄敮鎺懳涘┑鍥╊浄妞ゆ牜鍋為埛? % str(fleet.get("name", "闂備礁銈搁弲鏌ュ础閸愬弬?)),
+		"name": "%s-分舰队" % str(fleet.get("name", "玩家舰队")),
 		"ownerId": fleet.get("ownerId", ""),
 		"systemId": fleet.get("systemId", ""),
 		"mission": fleet.get("mission", "IDLE"),
@@ -963,13 +1290,13 @@ static func split_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 	var fleets: Array = next_state.get("fleets", [])
 	fleets.append(new_fleet)
 	next_state["fleets"] = fleets
-	return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾氨顔嗛梺绯曞墲椤ㄥ懘鎮?, "%s 闁诲骸婀遍…鍫濐嚕閼搁潧鍨旈柛顐ｆ礀缁€鍡涙煕閳╁喚娈旀慨锝咁樀閺岋繝宕掑☉姗嗘濠电偛鐗婇崹鍨暦濮樿泛骞㈡繛鎴烆殔鐎垫煡姊婚崒姘殶闁哥姴妫濋崺鈧? % str(fleet.get("name", "闂備礁銈搁弲鏌ュ础閸愬弬?)), "EVENT")
+	return add_message(next_state, "分舰队完成", "%s 已拆分出一支新的舰队。" % str(fleet.get("name", "玩家舰队")), "EVENT")
 
 static func merge_player_fleets(state: Dictionary, system_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var player_fleets: Array = player_fleets_in_system(next_state, system_id, "f_player")
 	if player_fleets.size() < 2:
-		return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾俺袝闂佸壊鍋呯换鍡欌偓姘懃椤潡骞嗛幍顔剧勘闁?, "闂備礁鎲￠懝鐐附閺冨倻鍗氶柟缁㈠枛閸欏﹪鏌ｉ弮鈧浠嬪礂閸ヮ剚鐓曢柟閭﹀墯閸も偓闂佹悶鍊ф俊鍥ㄧ閹间礁绠ｉ柨鏃€鍨濈划顖炴煟閻斿憡纾绘俊鐐村笧閹噣鏌嗗鍛摋濡炪倖鐗楀銊х不閹烘鐓涢柛灞剧矤閺€浼存煕閳轰胶鐒告慨濠傘偢閹垻鍒掗悷棰佸?, "SYSTEM")
+		return add_message(next_state, "合并舰队失败", "同一星系内至少需要 2 支玩家舰队才能执行合并。", "SYSTEM")
 	var keeper_id: String = str(player_fleets[0].get("id", ""))
 	var keeper_index: int = find_fleet_index(next_state, keeper_id)
 	var merged_ships: Array = []
@@ -986,9 +1313,9 @@ static func merge_player_fleets(state: Dictionary, system_id: String) -> Diction
 	if keeper_index != -1:
 		var keeper: Dictionary = next_state["fleets"][keeper_index]
 		keeper["ships"] = merged_ships
-		keeper["name"] = "%s濠电偞鍨堕幑渚€顢氳閹便劏绠涘☉娆忔疂婵炲鍘ч悺銊杺" % system_name_by_id(next_state, system_id)
+		keeper["name"] = "%s联合舰队" % system_name_by_id(next_state, system_id)
 		next_state["fleets"][keeper_index] = keeper
-	return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾俺袝闂佸壊鍋呯换鍡欌偓?, "%s 闂備礁鎼€氼噣宕伴幘缁樼劸闁圭虎鍠栫粈鍐煕濞戝崬鐏￠柣锝堜含閳ь剝顫夐悺鏇熴仈閹间礁钃熼柣鏂垮悑閸ゅ霉閻撳海鎽犵悮婵嬫倵閻熺増鍟炵憸鏉垮暣閹箖顢楅崟顐ゎ吅闂佸綊鍋婇崜姘跺磹閵堝棭娈介柣鎰硾閻撴劙鏌￠崱顓犳偧缂佽鲸鎹囧浠嬪Ψ閵忕姳澹? % system_name_by_id(next_state, system_id), "EVENT")
+	return add_message(next_state, "联合舰队已整编", "%s 的玩家舰队已合并为一支联合舰队。" % system_name_by_id(next_state, system_id), "EVENT")
 
 static func queue_structure(state: Dictionary, system_id: String, building_type: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1010,7 +1337,7 @@ static func queue_structure(state: Dictionary, system_id: String, building_type:
 			break
 	if blueprint.is_empty():
 		return next_state
-	if int(target_system.get("buildings", []).size()) >= int(target_system.get("buildingSlots", 0)):
+	if int(target_system.get("buildings", []).size()) + queued_building_count_for_system(next_state, system_id) >= int(target_system.get("buildingSlots", 0)):
 		return next_state
 	for building: Dictionary in target_system.get("buildings", []):
 		if building.get("type", "") == building_type and building_type == "SHIPYARD":
@@ -1019,14 +1346,14 @@ static func queue_structure(state: Dictionary, system_id: String, building_type:
 		if item.get("systemId", "") == system_id and item.get("targetId", "") == building_type:
 			return next_state
 	if not can_afford(player.get("resources", {}), blueprint.get("cost", {})):
-		return add_message(next_state, "闁诲海鍋ｉ崐鏍ь渻娴犲鐒垫い鎺戝€稿瓭闂侀潧娲﹂崹褰掑箯?, "闂佽崵濮嶉崘顭戜痪缂備緡鐓堥崰妤冪矙婢跺鍚嬮柛顐ｇ箓閺嬫瑩姊洪幐搴ｂ槈闁哄牜鍓欒灋闁靛牆鎳夐弸鏍煛閸モ晛浠х紒鎲嬬畵濮婃椽顢曢妶鍛咁剚銇勯弴鐔诲妞ゆ洘鐟╅幖褰掑捶椤撶喐鍟ｉ梻?, "SYSTEM")
+		return add_message(next_state, "建筑排队失败", "资源不足，无法将该建筑加入建造队列。", "SYSTEM")
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
 		if faction.get("id", "") == player.get("id", ""):
 			faction["resources"] = subtract_resources(faction.get("resources", {}), blueprint.get("cost", {}))
 			next_state["factions"][faction_index] = faction
 	var queue_item: Dictionary = {
-		"id": "queue_%s" % str(Time.get_ticks_msec()),
+		"id": make_state_id(next_state, "queue"),
 		"systemId": system_id,
 		"ownerId": player.get("id", ""),
 		"kind": "BUILDING",
@@ -1038,7 +1365,7 @@ static func queue_structure(state: Dictionary, system_id: String, building_type:
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append(queue_item)
 	next_state["constructionQueue"] = queue
-	return add_message(next_state, "闂備礁鎲″缁樻叏閹绢喖鐭楅柛鈩冾殢閸ゅ牊绻涘顔荤按闁稿鎹囬幃鈺冪磼濡偞娲熼弻?, "%s 闁诲海鎳撻幉陇銇愰崘顏咁潟闁瑰鍋為崣蹇涙倵閿濆簼绨界紒鎲嬬畵閹?%s闂? % [target_system.get("name", ""), blueprint.get("name", "")], "SYSTEM")
+	return add_message(next_state, "建筑已加入队列", "%s 已开始排队建造 %s。" % [target_system.get("name", ""), blueprint.get("name", "")], "SYSTEM")
 
 static func queue_ship_construction(state: Dictionary, system_id: String, ship_type: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1061,14 +1388,14 @@ static func queue_ship_construction(state: Dictionary, system_id: String, ship_t
 		return next_state
 	var cost: Dictionary = ship_cost(ship_type, next_state, player.get("id", ""))
 	if not can_afford(player.get("resources", {}), cost):
-		return add_message(next_state, "闂傚倷绶￠崑鍡樻叏妤ｅ啫鏄ラ悘鐐村劤缁剁偤寮堕崼顐函鐞?, "闂佽崵濮嶉崘顭戜痪缂備緡鐓堥崰妤冪矙婢跺鍚嬮柛顐ｇ箓閺嬫瑩姊洪幐搴ｂ槈闁哄牜鍓欒灋闁靛牆鎳夐弸鏍煛閸モ晛浠х紒鎲嬬畵濮婃椽顢曢妶鍛咁剚銇勯弴鐔峰摵闁硅櫕绮撻獮蹇曚沪閻ｅ苯骞嬮梻?, "SYSTEM")
+		return add_message(next_state, "舰船排队失败", "资源不足，无法开始建造该舰船。", "SYSTEM")
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
 		if faction.get("id", "") == player.get("id", ""):
 			faction["resources"] = subtract_resources(faction.get("resources", {}), cost)
 			next_state["factions"][faction_index] = faction
 	var queue_item: Dictionary = {
-		"id": "queue_%s" % str(Time.get_ticks_msec()),
+		"id": make_state_id(next_state, "queue"),
 		"systemId": system_id,
 		"ownerId": player.get("id", ""),
 		"kind": "SHIP",
@@ -1080,7 +1407,7 @@ static func queue_ship_construction(state: Dictionary, system_id: String, ship_t
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append(queue_item)
 	next_state["constructionQueue"] = queue
-	return add_message(next_state, "闂備礁鎲″缁樻叏閹绢喖鐭楅柛鈩冪⊕閻掑鏌ｅΟ鐑樻儓闁绘挸鍊垮濠氬礃椤忓嫭鐎婚梺?, "%s 闁诲海鎳撻幉陇銇愰崘顏咁潟闁瑰鍋為崣蹇涙倵閿濆簼绨界紒鎲嬬畵濮婃椽顢曢妶鍛咃紕绱掗弮鈧幐鎶藉箠?s闂? % [target_system.get("name", ""), InitialData.ship_labels().get(ship_type, ship_type)], "SYSTEM")
+	return add_message(next_state, "舰船已加入队列", "%s 已开始建造 %s。" % [target_system.get("name", ""), InitialData.ship_labels().get(ship_type, ship_type)], "SYSTEM")
 
 static func repair_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1104,7 +1431,7 @@ static func repair_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 		return next_state
 	var cost: Dictionary = repair_cost_for_fleet(fleet)
 	if not can_afford(player.get("resources", {}), cost):
-		return add_message(next_state, "缂傚倸鍊烽懗鍓佹崲濠靛绠為柕濠忕畱缁剁偤寮堕崼顐函鐞?, "闂佽崵濮嶉崘顭戜痪缂備緡鐓堥崰妤冪矙婢跺鍚嬮柛顐ｇ箓閺嬫瑩姊洪幐搴ｂ槈闁哄牜鍓欒灋闁靛牆鎳夐弸鏍煛閸モ晛浠ч柡鍡樺哺閺岀喓鈧稒锚婵矂鏌涢埡浣虹劯婵﹤銈搁幃銏ゆ倻濡儵鏋欏┑鐑囩到濞村倿宕伴幘璇茬劦?, "SYSTEM")
+		return add_message(next_state, "舰队修理失败", "资源不足，无法执行当前舰队修理。", "SYSTEM")
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
 		if faction.get("id", "") == player.get("id", ""):
@@ -1116,7 +1443,7 @@ static func repair_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 		ship["hp"] = ship.get("maxHp", 0)
 		repaired_fleet["ships"][ship_index] = ship
 	next_state["fleets"][fleet_index] = repaired_fleet
-	return add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晜閸撗咃紲缂傚倸鐗忔慨鐢稿矗?, "%s 闁诲海鎳撻幉陇銇愰崘顭掕€?%s 闂佽娴烽幊鎾诲嫉椤掑嫬鍨傛慨妯挎硾閺嬩線鏌℃径瀣劸婵¤尙鏁婚弻銊モ槈濡粯鎷遍梺鍓茬厛閸撶喎顕ｉ鈧灃闁逞屽墯閹便劏绠涘☉妯肩暢闂侀潧绻掓刊顓炍ｆ繝姘厪? % [fleet.get("name", ""), system.get("name", "")], "SYSTEM")
+	return add_message(next_state, "舰队修理完成", "%s 已在 %s 完成修理并恢复战备。" % [fleet.get("name", ""), system.get("name", "")], "SYSTEM")
 
 static func trade_with_faction(state: Dictionary, target_faction_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1157,13 +1484,13 @@ static func trade_with_faction(state: Dictionary, target_faction_id: String) -> 
 			"status": "ACTIVE",
 			"proposedOnTurn": next_state.get("turn", 1),
 			"expiresOnTurn": null,
-			"summary": "????????????"
+			"summary": "双方建立贸易协定。"
 		})
 		next_state["treaties"] = treaties
-	next_state = update_diplomatic_profile(next_state, target_faction_id, "friendly", 6, "?????????????????")
-	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "PROPOSAL", "??????", "??????????????????", true)
-	next_state = add_diplomatic_memory(next_state, "????", "???????????????????", [player.get("id", ""), target_faction_id], "AGREEMENT", 2)
-	return add_message(next_state, "????", "?? %s ???????????????" % target.get("name", ""), "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, target_faction_id, "friendly", 6, "愿意通过贸易改善双边关系。")
+	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "PROPOSAL", "贸易协定已签署", "双方已建立贸易协定，后续将获得稳定资源往来。", true)
+	next_state = add_diplomatic_memory(next_state, "贸易协定成立", "玩家与目标势力建立了新的贸易合作。", [player.get("id", ""), target_faction_id], "AGREEMENT", 2)
+	return add_message(next_state, "外交进展", "你与 %s 正式签署了贸易协定。" % target.get("name", ""), "DIPLOMATIC")
 
 static func threaten_faction(state: Dictionary, target_faction_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1189,12 +1516,12 @@ static func threaten_faction(state: Dictionary, target_faction_id: String) -> Di
 		if not touches or treaty.get("status", "") != "ACTIVE" or treaty.get("type", "") == "TRADE_PACT":
 			continue
 		treaty["status"] = "BROKEN"
-		treaty["summary"] = "%s ??????????" % treaty.get("summary", "")
+		treaty["summary"] = "%s 已因威胁而破裂。" % treaty.get("summary", "")
 		next_state["treaties"][index] = treaty
-	next_state = update_diplomatic_profile(next_state, target_faction_id, "firm", -8, "???????????????")
-	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "WARNING", "????", "?????????????????", true)
-	next_state = add_diplomatic_memory(next_state, "????", "????????????????", [player.get("id", ""), target_faction_id], "WARNING", 2)
-	return add_message(next_state, "????", "??? %s ????????????" % target_name, "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, target_faction_id, "firm", -8, "认为玩家正在提高外交与军事压力。")
+	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "WARNING", "最后通牒", "玩家向该势力发出了公开警告。", true)
+	next_state = add_diplomatic_memory(next_state, "公开威胁", "玩家对目标势力发出了明确威胁。", [player.get("id", ""), target_faction_id], "WARNING", 2)
+	return add_message(next_state, "外交施压", "你已向 %s 发出强硬警告。" % target_name, "DIPLOMATIC")
 
 static func revoke_treaty(state: Dictionary, target_faction_id: String, treaty_type: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1206,7 +1533,7 @@ static func revoke_treaty(state: Dictionary, target_faction_id: String, treaty_t
 		if not touches or treaty.get("status", "") != "ACTIVE" or treaty.get("type", "") != treaty_type:
 			continue
 		treaty["status"] = "BROKEN"
-		treaty["summary"] = "?????????????"
+		treaty["summary"] = "该条约已被单方面废止。"
 		next_state["treaties"][index] = treaty
 		changed = true
 	if not changed:
@@ -1221,10 +1548,10 @@ static func revoke_treaty(state: Dictionary, target_faction_id: String, treaty_t
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
 	var treaty_label: String = InitialData.treaty_labels().get(treaty_type, treaty_type)
-	next_state = update_diplomatic_profile(next_state, target_faction_id, "hostile", -6, "?????????????????")
-	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "NOTIFICATION", "??????", "????????? %s?" % treaty_label, true)
-	next_state = add_diplomatic_memory(next_state, "????", "????????????????", [player.get("id", ""), target_faction_id], "TREATY", 2)
-	return add_message(next_state, "????", "?????????? %s?" % treaty_label, "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, target_faction_id, "hostile", -6, "认为玩家不再愿意维持既有承诺。")
+	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "NOTIFICATION", "条约废止通知", "玩家已正式废止 %s。" % treaty_label, true)
+	next_state = add_diplomatic_memory(next_state, "条约终止", "玩家终止了与目标势力之间的现行条约。", [player.get("id", ""), target_faction_id], "TREATY", 2)
+	return add_message(next_state, "条约终止", "你已废止 %s。" % treaty_label, "DIPLOMATIC")
 
 static func declare_war_on_faction(state: Dictionary, source_faction_id: String, target_faction_id: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1251,7 +1578,7 @@ static func declare_war_on_faction(state: Dictionary, source_faction_id: String,
 		if not touches_treaty or treaty.get("status", "") != "ACTIVE":
 			continue
 		treaty["status"] = "BROKEN"
-		treaty["summary"] = "?????????????"
+		treaty["summary"] = "双方关系已升级为战争状态。"
 		next_state["treaties"][index] = treaty
 	if not has_treaty(next_state, source_faction_id, target_faction_id, "WAR_STATE"):
 		var treaties: Array = next_state.get("treaties", [])
@@ -1263,14 +1590,14 @@ static func declare_war_on_faction(state: Dictionary, source_faction_id: String,
 			"status": "ACTIVE",
 			"proposedOnTurn": next_state.get("turn", 1),
 			"expiresOnTurn": null,
-			"summary": "????????????"
+			"summary": "双方进入战争状态。"
 		})
 		next_state["treaties"] = treaties
-	next_state = update_diplomatic_profile(next_state, source_faction_id, "hostile", -10, "???????????????????")
-	next_state = update_diplomatic_profile(next_state, target_faction_id, "hostile", -10, "???????????????????")
-	next_state = add_diplomatic_message(next_state, source_faction_id, [target_faction_id], "BROADCAST", "PUBLIC", "WARNING", "?????", "%s ?? %s ???????" % [source_name, target_name], true)
-	next_state = add_diplomatic_memory(next_state, "????", "%s ? %s ?????????" % [source_name, target_name], [source_faction_id, target_faction_id], "WAR", 4)
-	return add_message(next_state, "????", "%s ?? %s ???????" % [source_name, target_name], "DIPLOMATIC")
+	next_state = update_diplomatic_profile(next_state, source_faction_id, "hostile", -10, "已将对方视为直接军事对手。")
+	next_state = update_diplomatic_profile(next_state, target_faction_id, "hostile", -10, "已将对方视为直接军事对手。")
+	next_state = add_diplomatic_message(next_state, source_faction_id, [target_faction_id], "BROADCAST", "PUBLIC", "WARNING", "战争宣告", "%s 已对 %s 宣战。" % [source_name, target_name], true)
+	next_state = add_diplomatic_memory(next_state, "战争爆发", "%s 与 %s 已进入公开战争状态。" % [source_name, target_name], [source_faction_id, target_faction_id], "WAR", 4)
+	return add_message(next_state, "战争爆发", "%s 已对 %s 宣战。" % [source_name, target_name], "DIPLOMATIC")
 
 static func treaty_acceptance(state: Dictionary, treaty_type: String, target_faction_id: String) -> Dictionary:
 	var player: Dictionary = player_faction(state)
@@ -1278,16 +1605,16 @@ static func treaty_acceptance(state: Dictionary, treaty_type: String, target_fac
 	var trust: int = int(relation.get("trust", 0))
 	var requires_tech: bool = treaty_type == "TRADE_PACT" or has_research(state, "tech_diplomatic_protocols")
 	if not requires_tech:
-		return {"accepted": false, "reason": "闂佽绻愮换鎴犲枈瀹ュ拑鑰挎い鎾卞灩缁犳娊鎮橀悙鏉戝姢缂傚秵鍨块弻锟犲礋椤撶偞鐏堝┑锛勮檸閸ㄥ磭鍒掗崼銉﹀亗閹艰揪绱曢崢顒勬⒑閸涘娈旂紒缁橆殜椤㈡瑩宕ㄧ€涙ɑ娅栭柣蹇曞仧閸嬫捇鏁撻妷锔剧濠㈣泛顑嗙粈鍫㈢磼娓氬灝濡跨紒杈ㄥ浮楠炴鈧稒顭囬崙鑺ヤ繆閵堝懎鈧綊鈥﹂崶顭戞闁搞儺鍓欑痪褔鏌ㄥ☉妯侯仼妞ゆ柨锕弻?}
+		return {"accepted": false, "reason": "尚未完成外交协议相关科技，对方不会接受这类正式条约。"}
 	if treaty_type == "TRADE_PACT" and trust >= -10:
-		return {"accepted": true, "reason": "闂佽绨肩徊濠氾綖婢舵劕钃熼柣鏃傚劋婵ジ鏌曢崼婵嗩伂缂佲偓鐎ｎ剛纾藉ù锝呯墕閹虫劙寮ィ鍐╁仯闁归偊鍓氶崯鐐翠繆閸欏娈曠紒鍌涘笒椤撳ジ宕卞Ο鑲╂殺闂備礁鎲″濠氬疾濞戞嚎浜归柡灞诲劚閻愬﹤菐閸ャ劌顣抽柛?}
+		return {"accepted": true, "reason": "对方认为贸易互利且风险可控，因此愿意接受贸易协定。"}
 	if treaty_type == "NON_AGGRESSION" and trust >= 10:
-		return {"accepted": true, "reason": "闂佸搫顦悧蹇涘箠閹炬眹鈧倿濡搁敂缁㈡锤闂佺懓鎼粔宕囨崲閸℃稒鍊堕煫鍥ㄦ婢规鎲搁悧鍫㈠弨闁轰礁绉舵禒锕傛寠婢跺孩鎲伴梻浣告惈閸婁粙锝炴径鎰鐟滅増甯掔粻娑㈢叓閸ャ劍灏柡瀣懅缁辨挻鎷呯憴鍕瀺濡炪倖甯為崰鎾诲箟濡ゅ懎宸濇い鏃囨濞呮岸姊洪悷鏉跨殹閻犳劗鍠栭崺鈧?}
+		return {"accepted": true, "reason": "双方关系达到可缓和区间，对方愿意签署互不侵犯条约。"}
 	if treaty_type == "RESEARCH_ACCORD" and trust >= 30:
-		return {"accepted": true, "reason": "闂佽绨肩徊濠氾綖婢舵劕钃熼柣鏃傚帶缁犳娊鏌曟径鍫濆姎缂傚秮鍋撻梻浣侯焾缁绘劘銇愭径鎰棅闁冲搫鎳忛崕姗€鏌￠崘銊モ偓鐢稿极閳ь剟姊洪悷鎵憼闁告梹鐗犻幃妯诲緞鐎ｎ兘鏋栭柟鑹版彧缁辨洟寮堕挊澹╂棃鎮╅崣澶嬫嫳闂佸搫妫涢崰鏍嵁閹达富鏁婇悶娑掆偓鍏呭?}
+		return {"accepted": true, "reason": "对方信任度足够，愿意开放科研合作并共享研究收益。"}
 	if treaty_type == "ALLIANCE" and trust >= 65:
-		return {"accepted": true, "reason": "闂備礁鎲￠悷銉╁嫉椤掑嫬钃熼柣鏂挎憸椤╂煡鏌熼崫鍕＄紒璇叉閳ь剝顫夐悺鏇犱焊椤忓牆绀冪紓浣姑欢鐐烘煟閺傛寧鍟為柡鍡樼矒閺岀喖鎮欓鈧悘锔姐亜閹烘挾鐭婃い鏇秬缁犳盯骞橀弶鎴斿亾闁秵鐓熼柍鍝勫暙閺嬪倿鏌?}
-	return {"accepted": false, "reason": "闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯虹－椤╂煡鏌熼崫鍕＄紒璇叉閳藉骞樺畷鍥嗐儵鏌涢幇顒夌吋闁轰礁绉舵禒锔剧驳鐎ｎ亝顔忛梻浣告惈閸婁粙锝炴径灞稿亾濮橆剚顥犵紒杈ㄥ笒閳规垿宕奸銏犘炵紓鍌氬€搁崯宕囦焊椤忓牜鏁嬫慨妯挎硾缁狙囨煥濞戞ê顏╂い鏂匡躬閺?}
+		return {"accepted": true, "reason": "双方已形成高度信任，对方愿意进入正式同盟关系。"}
+	return {"accepted": false, "reason": "当前信任度或战略环境不足，对方拒绝了这份条约提案。"}
 
 static func propose_treaty(state: Dictionary, target_faction_id: String, treaty_type: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1325,12 +1652,43 @@ static func propose_treaty(state: Dictionary, target_faction_id: String, treaty_
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
 	var treaty_label: String = InitialData.treaty_labels().get(treaty_type, treaty_type)
-	next_state = update_diplomatic_profile(next_state, target_faction_id, "friendly" if accepted else "firm", 4 if accepted else -4, "????????????????")
-	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "PROPOSAL", treaty_label, "????????? %s?" % treaty_label, true)
-	next_state = add_diplomatic_memory(next_state, "????", "?????????? %s?" % treaty_label, [player.get("id", ""), target_faction_id], "PROPOSAL", 2)
+	next_state = update_diplomatic_profile(next_state, target_faction_id, "friendly" if accepted else "firm", 4 if accepted else -4, "玩家发起条约提案")
+	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", "PUBLIC", "PROPOSAL", treaty_label, "玩家提出条约：%s。" % treaty_label, true)
+	next_state = add_diplomatic_memory(next_state, "条约提案", "已向 %s 发出条约提案：%s。" % [target_name, treaty_label], [player.get("id", ""), target_faction_id], "PROPOSAL", 2)
 	if accepted:
-		return add_message(next_state, treaty_label, "%s ??? %s?%s" % [target_name, treaty_label, verdict.get("reason", "")], "DIPLOMATIC")
-	return add_message(next_state, "????", "%s ????? %s ???%s" % [target_name, treaty_label, verdict.get("reason", "")], "DIPLOMATIC")
+		return add_message(next_state, treaty_label, "%s 接受了 %s。%s" % [target_name, treaty_label, verdict.get("reason", "")], "DIPLOMATIC")
+	return add_message(next_state, "条约被拒绝", "%s 拒绝了 %s。%s" % [target_name, treaty_label, verdict.get("reason", "")], "DIPLOMATIC")
+
+static func send_ultimatum(state: Dictionary, target_faction_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var player: Dictionary = player_faction(next_state)
+	var target_name: String = get_faction_by_id(next_state, target_faction_id).get("name", target_faction_id)
+	if has_treaty(next_state, player.get("id", ""), target_faction_id, "WAR_STATE"):
+		return next_state
+	var relation: Dictionary = relation_between(next_state, player.get("id", ""), target_faction_id)
+	var intimidation_score: int = int(relation.get("fear", 0)) + int(relation.get("trust", 0)) / 2 + int(relation.get("utility", 0)) / 3
+	next_state = create_pending_proposal(next_state, player.get("id", ""), target_faction_id, "ULTIMATUM", "最后通牒", "玩家要求 %s 立即让步，否则战争将立刻爆发。" % target_name, 2)
+	var proposal_id: String = find_pending_proposal_id(next_state, player.get("id", ""), target_faction_id, "ULTIMATUM")
+	if intimidation_score < 45:
+		next_state = reject_pending_proposal(next_state, proposal_id)
+		return add_message(next_state, "最后通牒", "%s 拒绝了最后通牒，危机升级为战争。" % target_name, "DIPLOMATIC")
+	next_state = accept_pending_proposal(next_state, proposal_id)
+	return add_message(next_state, "最后通牒", "%s 接受了最后通牒，战争暂时被避免。" % target_name, "DIPLOMATIC")
+
+static func propose_peace_talk(state: Dictionary, target_faction_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var player: Dictionary = player_faction(next_state)
+	if not has_treaty(next_state, player.get("id", ""), target_faction_id, "WAR_STATE"):
+		return next_state
+	var target_name: String = get_faction_by_id(next_state, target_faction_id).get("name", target_faction_id)
+	var relation: Dictionary = relation_between(next_state, player.get("id", ""), target_faction_id)
+	var willingness: int = int(relation.get("fear", 0)) + int(relation.get("utility", 0)) / 2 - int(relation.get("tension", 0)) / 3
+	next_state = create_pending_proposal(next_state, player.get("id", ""), target_faction_id, "PEACE_TALK", "停火谈判", "玩家向 %s 提出停火与和平谈判。" % target_name, 3)
+	var proposal_id: String = find_pending_proposal_id(next_state, player.get("id", ""), target_faction_id, "PEACE_TALK")
+	if willingness >= 18:
+		next_state = accept_pending_proposal(next_state, proposal_id)
+		return add_message(next_state, "停火谈判", "%s 接受了停火提议，双方恢复和平。" % target_name, "DIPLOMATIC")
+	return add_message(next_state, "停火谈判", "%s 已收到和平提议，正在评估之中。" % target_name, "DIPLOMATIC")
 
 static func unlock_technologies(technologies: Array) -> Array:
 	var updated: Array = []
@@ -1380,8 +1738,8 @@ static func progress_research(state: Dictionary) -> Dictionary:
 		tech["progress"] = progress
 		tech["status"] = "RESEARCHED" if completed else "RESEARCHING"
 		technologies[index] = tech
-		return {"technologies": unlock_technologies(technologies), "currentResearchId": null if completed else tech.get("id", ""), "researchProgress": 0.0 if completed else progress, "completedName": tech.get("name", "") if completed else null}
-	return {"technologies": unlock_technologies(technologies), "currentResearchId": null, "researchProgress": 0.0, "completedName": null}
+		return {"technologies": unlock_technologies(technologies), "currentResearchId": null if completed else tech.get("id", ""), "researchProgress": 0.0 if completed else progress, "completedName": tech.get("name", "") if completed else null, "completedId": tech.get("id", "") if completed else ""}
+	return {"technologies": unlock_technologies(technologies), "currentResearchId": null, "researchProgress": 0.0, "completedName": null, "completedId": ""}
 
 static func faction_yield(state: Dictionary, faction_id: String) -> Dictionary:
 	var bundle: Dictionary = empty_resources()
@@ -1400,7 +1758,7 @@ static func faction_yield(state: Dictionary, faction_id: String) -> Dictionary:
 			bundle["minerals"] = int(bundle.get("minerals", 0)) + 2
 		for _accord: Dictionary in active_treaties_for_faction(state, "f_player", "RESEARCH_ACCORD"):
 			bundle["industry"] = int(bundle.get("industry", 0)) + 2
-	return bundle
+	return apply_energy_shortage_penalty(bundle)
 
 static func apply_faction_economy(state: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1440,15 +1798,15 @@ static func complete_queue_item(state: Dictionary, item: Dictionary) -> Dictiona
 				var system: Dictionary = next_state["starSystems"][system_index]
 				if system.get("id", "") == item.get("systemId", ""):
 					var building: Dictionary = blueprint.duplicate(true)
-					building["id"] = "building_%s" % str(Time.get_ticks_msec())
+					building["id"] = make_state_id(next_state, "building")
 					var buildings: Array = system.get("buildings", [])
 					buildings.append(building)
 					system["buildings"] = buildings
 					next_state["starSystems"][system_index] = system
-					return add_message(next_state, "闁诲海鍋ｉ崐鏍ь渻娴犲鐒垫い鎺戝€稿瓭闂佷紮缍嗛崜鐔肩嵁?, "%s 闁诲海鎳撻幉陇銇愰崘顭掕€?%s 闂佽娴烽幊鎾绘嚐椤栨稑顕遍柟鐗堟緲杩? % [item.get("displayName", ""), system.get("name", "")], "EVENT")
+					return add_message(next_state, "建筑完工", "%s 已在 %s 完成建造。" % [item.get("displayName", ""), system.get("name", "")], "EVENT")
 	else:
 		var ship_type: String = item.get("targetId", "")
-		var ship: Dictionary = create_ship(ship_type, "闂備礁鎼崐瑙勭珶閸℃瑦顫?s" % InitialData.ship_labels().get(ship_type, ship_type), next_state, item.get("ownerId", ""))
+		var ship: Dictionary = create_ship(ship_type, "%s级舰" % InitialData.ship_labels().get(ship_type, ship_type), next_state, item.get("ownerId", ""))
 		for fleet_index: int in range(next_state["fleets"].size()):
 			var fleet: Dictionary = next_state["fleets"][fleet_index]
 			if fleet.get("ownerId", "") == item.get("ownerId", "") and fleet.get("systemId", "") == item.get("systemId", ""):
@@ -1456,13 +1814,13 @@ static func complete_queue_item(state: Dictionary, item: Dictionary) -> Dictiona
 				ships.append(ship)
 				fleet["ships"] = ships
 				next_state["fleets"][fleet_index] = fleet
-				return add_message(next_state, "闂備胶鍘ч幉鈩冨垔娴犲鏄ラ柣鎰嚟閳绘棃鎮楅敐搴′簼閻?, "%s 闁诲海鎳撻幉陇銇愰崘顭掕€挎い蹇撶墛閸ゅ鏌ｉ悢鍝勵暭濠殿喗绮撻幃妤呮偡閻楀牊鎷遍梺鎼炲妽绾板秶绮欐径灞稿亾閿濆骸浜濋悗鍨矒閺? % item.get("displayName", ""), "EVENT")
+				return add_message(next_state, "舰船建造完成", "%s 已加入当前驻留舰队。" % item.get("displayName", ""), "EVENT")
 		var fleets: Array = next_state.get("fleets", [])
-		fleets.append({"id": "fleet_%s" % str(Time.get_ticks_msec()), "ownerId": item.get("ownerId", ""), "systemId": item.get("systemId", ""), "name": "%s 闂佽娴烽幊鎾绘偋閸℃蛋鍥敆閸曨兘鎸€? % item.get("systemId", ""), "ships": [ship]})
+		fleets.append({"id": make_state_id(next_state, "fleet"), "ownerId": item.get("ownerId", ""), "systemId": item.get("systemId", ""), "name": "%s 防卫舰队" % item.get("systemId", ""), "ships": [ship]})
 		if not fleets.is_empty():
 			fleets[fleets.size() - 1]["mission"] = "IDLE"
 		next_state["fleets"] = fleets
-		return add_message(next_state, "闂備胶鍘ч幉鈩冨垔娴犲鏄ラ柣鎰嚟閳绘棃鎮楅敐搴′簼閻?, "%s 闁诲海鎳撻幉陇銇愰崘顭掕€挎い蹇撶墛閸ゅ鏌ｉ悢鍝勵暭濠殿喗绮撻幃妤呮偡閻楀牊鎷遍梺鎼炲妽绾板秶绮欐径灞稿亾閿濆骸浜濋悗鍨矒閺? % item.get("displayName", ""), "EVENT")
+		return add_message(next_state, "舰船建造完成", "%s 已作为新舰队投入部署。" % item.get("displayName", ""), "EVENT")
 	return next_state
 
 static func queue_turn_bonus(state: Dictionary, system_id: String) -> int:
@@ -1494,20 +1852,154 @@ static func advance_construction_queue(state: Dictionary) -> Dictionary:
 	next_state["constructionQueue"] = updated_queue
 	return next_state
 
-static func update_ascension_progress(state: Dictionary) -> Dictionary:
-	var delta: int = 0
-	if has_research(state, "tech_star_harmonics"):
-		delta += 10
-	if has_research(state, "tech_singularity_lattice"):
-		delta += 18
-	if has_treaty(state, "f_player", "f_merchant", "RESEARCH_ACCORD"):
-		delta += 6
+static func default_ascension_project() -> Dictionary:
+	return {
+		"stage": "INACTIVE",
+		"siteSystemId": "",
+		"siteSystemName": "",
+		"foundationTurnsRemaining": 30,
+		"chargeProgress": 0,
+		"chargeRequired": 120,
+		"finalTurnsRemaining": 15,
+		"globallyVisible": false,
+		"blockedReason": "",
+		"lastBlockedTurn": 0
+	}
+
+static func ascension_project_data(state: Dictionary) -> Dictionary:
+	var project: Dictionary = default_ascension_project()
+	project.merge(state.get("ascensionProject", {}), true)
+	return project
+
+static func best_ascension_site(state: Dictionary, faction_id: String = "f_player") -> Dictionary:
+	var best_site: Dictionary = {}
+	var best_value: int = -999999
+	for system: Dictionary in owned_systems(state, faction_id):
+		if system.get("colonyStage", "NONE") == "OUTPOST":
+			continue
+		var site_value: int = int(system.get("habitability", 0)) + int(system.get("population", 0)) / 10 + int(system.get("migrationPull", 0)) + int(system.get("stability", 0)) / 5
+		if site_value > best_value:
+			best_value = site_value
+			best_site = system
+	return best_site
+
+static func ascension_charge_cost(state: Dictionary) -> Dictionary:
+	var base_cost: Dictionary = {"food": 0, "minerals": 18, "industry": 24, "energy": 30}
+	var lab_count: int = 0
 	for system: Dictionary in owned_systems(state, "f_player"):
 		for building: Dictionary in system.get("buildings", []):
 			if building.get("type", "") == "RESEARCH_LAB":
-				delta += 2
+				lab_count += 1
+	base_cost["energy"] = max(18, int(base_cost.get("energy", 0)) - mini(8, lab_count * 2))
+	if has_treaty(state, "f_player", "f_merchant", "RESEARCH_ACCORD"):
+		base_cost["minerals"] = max(12, int(base_cost.get("minerals", 0)) - 4)
+	return base_cost
+
+static func ascension_charge_gain(state: Dictionary) -> int:
+	var gain: int = 8
+	if has_research(state, "tech_star_harmonics"):
+		gain += 10
+	if has_research(state, "tech_singularity_lattice"):
+		gain += 18
+	if has_treaty(state, "f_player", "f_merchant", "RESEARCH_ACCORD"):
+		gain += 6
+	for system: Dictionary in owned_systems(state, "f_player"):
+		for building: Dictionary in system.get("buildings", []):
+			if building.get("type", "") == "RESEARCH_LAB":
+				gain += 2
+	return gain
+
+static func set_ascension_site_bonus(state: Dictionary, system_id: String, active: bool, stage_name: String = "") -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
-	next_state["ascension_progress"] = min(100, int(next_state.get("ascension_progress", 0)) + delta)
+	for system_index: int in range(next_state.get("starSystems", []).size()):
+		var system: Dictionary = next_state["starSystems"][system_index]
+		if system.get("id", "") == system_id and active:
+			system["ascensionWonderBonus"] = 0.5
+			system["ascensionWonderStage"] = stage_name
+			system["ascensionWonderVisible"] = true
+		else:
+			system["ascensionWonderBonus"] = 0.0
+			if system.has("ascensionWonderStage"):
+				system.erase("ascensionWonderStage")
+			system["ascensionWonderVisible"] = false
+		next_state["starSystems"][system_index] = system
+	return next_state
+
+static func update_ascension_progress(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var project: Dictionary = ascension_project_data(next_state)
+	var just_started: bool = false
+	if project.get("stage", "INACTIVE") == "INACTIVE":
+		if has_research(next_state, "tech_star_harmonics") and has_research(next_state, "tech_singularity_lattice"):
+			var site: Dictionary = best_ascension_site(next_state, "f_player")
+			if not site.is_empty():
+				project["stage"] = "FOUNDATION"
+				project["siteSystemId"] = site.get("id", "")
+				project["siteSystemName"] = site.get("name", site.get("id", ""))
+				project["foundationTurnsRemaining"] = 30
+				project["chargeProgress"] = 0
+				project["chargeRequired"] = 120
+				project["finalTurnsRemaining"] = 15
+				project["globallyVisible"] = true
+				project["blockedReason"] = ""
+				project["lastBlockedTurn"] = 0
+				next_state = add_message(next_state, "飞升计划启动", "帝国已在 %s 启动文明飞升计划，进入 30 回合的基座铺设阶段。该星系现已成为全银河关注焦点。" % project.get("siteSystemName", "未知星系"), "SYSTEM")
+				just_started = true
+	if project.get("stage", "INACTIVE") == "FOUNDATION":
+		if not just_started:
+			project["foundationTurnsRemaining"] = max(0, int(project.get("foundationTurnsRemaining", 30)) - 1)
+		if int(project.get("foundationTurnsRemaining", 0)) <= 0:
+			project["stage"] = "CORE_CHARGING"
+			project["chargeProgress"] = 0
+			project["blockedReason"] = ""
+			next_state = set_ascension_site_bonus(next_state, str(project.get("siteSystemId", "")), true, "CORE_CHARGING")
+			next_state = add_message(next_state, "飞升基座完成", "%s 的飞升基座已完成，星系产出提升 50%，进入核心充能阶段。" % project.get("siteSystemName", "未知星系"), "SYSTEM")
+	elif project.get("stage", "") == "CORE_CHARGING":
+		var charge_cost: Dictionary = ascension_charge_cost(next_state)
+		var player: Dictionary = player_faction(next_state)
+		if can_afford(player.get("resources", {}), charge_cost):
+			for faction_index: int in range(next_state.get("factions", []).size()):
+				var faction: Dictionary = next_state["factions"][faction_index]
+				if not faction.get("isPlayer", false):
+					continue
+				faction["resources"] = subtract_resources(faction.get("resources", {}), charge_cost)
+				next_state["factions"][faction_index] = faction
+				break
+			project["chargeProgress"] = min(int(project.get("chargeRequired", 120)), int(project.get("chargeProgress", 0)) + ascension_charge_gain(next_state))
+			project["blockedReason"] = ""
+			if int(project.get("chargeProgress", 0)) >= int(project.get("chargeRequired", 120)):
+				project["stage"] = "FINAL_LAUNCH"
+				project["finalTurnsRemaining"] = 15
+				next_state = set_ascension_site_bonus(next_state, str(project.get("siteSystemId", "")), true, "FINAL_LAUNCH")
+				next_state = add_message(next_state, "飞升核心就绪", "%s 的奇观核心已完成充能，进入最后 15 回合的启动保护期。" % project.get("siteSystemName", "未知星系"), "SYSTEM")
+		else:
+			project["blockedReason"] = "RESOURCE_SHORTAGE"
+			if int(next_state.get("turn", 1)) - int(project.get("lastBlockedTurn", 0)) >= 3:
+				next_state = add_message(next_state, "飞升充能受阻", "文明飞升计划因资源不足暂停充能。当前每回合至少需要 矿产 %s / 工业 %s / 能源 %s。" % [str(charge_cost.get("minerals", 0)), str(charge_cost.get("industry", 0)), str(charge_cost.get("energy", 0))], "SYSTEM")
+				project["lastBlockedTurn"] = int(next_state.get("turn", 1))
+	elif project.get("stage", "") == "FINAL_LAUNCH":
+		project["finalTurnsRemaining"] = max(0, int(project.get("finalTurnsRemaining", 15)) - 1)
+		if int(project.get("finalTurnsRemaining", 0)) <= 0:
+			project["stage"] = "COMPLETED"
+			project["globallyVisible"] = true
+			next_state = set_ascension_site_bonus(next_state, str(project.get("siteSystemId", "")), true, "COMPLETED")
+			next_state = add_message(next_state, "飞升启动完成", "%s 的最终启动窗口已经闭合，文明飞升计划宣告成功。" % project.get("siteSystemName", "未知星系"), "SYSTEM")
+	elif project.get("stage", "") == "COMPLETED":
+		next_state = set_ascension_site_bonus(next_state, str(project.get("siteSystemId", "")), true, "COMPLETED")
+	var stage_progress: int = 0
+	match str(project.get("stage", "INACTIVE")):
+		"FOUNDATION":
+			stage_progress = int(round((30.0 - float(project.get("foundationTurnsRemaining", 30))) / 30.0 * 34.0))
+		"CORE_CHARGING":
+			stage_progress = 34 + int(round(float(project.get("chargeProgress", 0)) / max(1.0, float(project.get("chargeRequired", 120))) * 33.0))
+		"FINAL_LAUNCH":
+			stage_progress = 67 + int(round((15.0 - float(project.get("finalTurnsRemaining", 15))) / 15.0 * 33.0))
+		"COMPLETED":
+			stage_progress = 100
+		_:
+			stage_progress = 0
+	next_state["ascensionProject"] = project
+	next_state["ascension_progress"] = clamp(stage_progress, 0, 100)
 	return next_state
 
 static func expire_treaties(state: Dictionary) -> Dictionary:
@@ -1524,9 +2016,167 @@ static func expire_treaties(state: Dictionary) -> Dictionary:
 		treaty["status"] = "EXPIRED"
 		treaties[index] = treaty
 		changed = true
-		next_state = add_message(next_state, "闂備礁鎼¨鈧紒杈ㄦ礈閳ь剝顫夋繛濠傜暦濮樿埖鍋嬮柛顐ゅ枎閻?, "%s 闁诲骸婀遍…鍫濐嚕閸洦鏁嗘繝濠傚枤閸ゆ洟鐓崶銊﹀碍闁绘挸鍊块弻锟犲醇閵忕姵鐎梺? % treaty.get("name", "濠电偞鍨堕幐鎾磻閹炬剚娓婚柕鍫濈墱濞兼劖绻涚喊鍗炵仯闁?), "DIPLOMATIC")
+		next_state = add_message(next_state, "条约到期", "%s 已达到有效期并自动失效。" % treaty.get("name", "外交条约"), "DIPLOMATIC")
 	if changed:
 		next_state["treaties"] = treaties
+	return next_state
+
+static func default_galactic_council() -> Dictionary:
+	return {
+		"established": false,
+		"speakerFactionId": "",
+		"speakerTitle": "未设立",
+		"charterStatus": "INACTIVE",
+		"charterVotesFor": [],
+		"charterVotesAgainst": [],
+		"lastVoteTurn": 0
+	}
+
+static func galactic_council_data(state: Dictionary) -> Dictionary:
+	var council: Dictionary = default_galactic_council()
+	council.merge(state.get("galacticCouncil", {}), true)
+	return council
+
+static func diplomatic_influence_score(state: Dictionary, faction_id: String) -> int:
+	var score: int = 0
+	for faction: Dictionary in state.get("factions", []):
+		if faction.get("id", "") == faction_id:
+			score += int(faction.get("population", 0)) / 40
+			score += int(faction.get("technologyLevel", 0)) * 3
+			break
+	for other: Dictionary in state.get("factions", []):
+		var other_id: String = other.get("id", "")
+		if other_id == faction_id:
+			continue
+		if has_treaty(state, faction_id, other_id, "ALLIANCE"):
+			score += 20
+		if has_treaty(state, faction_id, other_id, "RESEARCH_ACCORD"):
+			score += 12
+		if has_treaty(state, faction_id, other_id, "NON_AGGRESSION"):
+			score += 8
+		if has_treaty(state, faction_id, other_id, "WAR_STATE"):
+			score -= 18
+		var relation: Dictionary = relation_breakdown(state, faction_id, other_id)
+		score += int(relation.get("trust", 0)) / 8
+		score += int(relation.get("utility", 0)) / 10
+		score -= int(relation.get("fear", 0)) / 10
+	return score
+
+static func council_vote_for_player(state: Dictionary, faction_id: String) -> bool:
+	if faction_id == "f_player":
+		return true
+	if has_treaty(state, "f_player", faction_id, "WAR_STATE"):
+		return false
+	var relation: Dictionary = relation_breakdown(state, "f_player", faction_id)
+	var support_score: int = int(relation.get("trust", 0)) + int(relation.get("utility", 0)) - int(relation.get("fear", 0))
+	if has_treaty(state, "f_player", faction_id, "ALLIANCE"):
+		support_score += 24
+	if has_treaty(state, "f_player", faction_id, "RESEARCH_ACCORD"):
+		support_score += 14
+	if has_treaty(state, "f_player", faction_id, "NON_AGGRESSION"):
+		support_score += 10
+	return support_score >= 28
+
+static func update_galactic_council(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var council: Dictionary = galactic_council_data(next_state)
+	var diplomacy_report: Dictionary = player_diplomatic_victory_report(next_state)
+	var player_ready_for_council: bool = has_research(next_state, "tech_federal_council") and int(diplomacy_report.get("peace_partners", 0)) >= maxi(1, int(ceil(float(diplomacy_report.get("total_rivals", 0)) * 0.5)))
+	if not bool(council.get("established", false)) and player_ready_for_council:
+		council["established"] = true
+		council["speakerFactionId"] = "f_player"
+		council["speakerTitle"] = "泛星际联合国议长"
+		next_state = add_message(next_state, "联合国成立", "在多边和平网络支撑下，泛星际联合国已成立，你成为首任议长。", "DIPLOMATIC")
+	if bool(council.get("established", false)):
+		var best_speaker_id: String = str(council.get("speakerFactionId", "f_player"))
+		var best_score: int = -999999
+		for faction: Dictionary in next_state.get("factions", []):
+			var faction_id: String = faction.get("id", "")
+			var score: int = diplomatic_influence_score(next_state, faction_id)
+			if score > best_score:
+				best_score = score
+				best_speaker_id = faction_id
+		council["speakerFactionId"] = best_speaker_id
+		var speaker_name: String = get_faction_by_id(next_state, best_speaker_id).get("name", best_speaker_id)
+		council["speakerTitle"] = "%s议长" % speaker_name
+		if best_speaker_id == "f_player" and str(council.get("charterStatus", "INACTIVE")) == "INACTIVE" and int(diplomacy_report.get("peace_partners", 0)) >= int(diplomacy_report.get("total_rivals", 0)):
+			council["charterStatus"] = "VOTING"
+			next_state = add_message(next_state, "和平统一宪章", "你已以议长身份提交和平统一宪章，银河各势力开始表决。", "DIPLOMATIC")
+		if str(council.get("charterStatus", "")) == "VOTING" and best_speaker_id == "f_player":
+			var votes_for: Array = []
+			var votes_against: Array = []
+			for faction: Dictionary in next_state.get("factions", []):
+				var faction_id: String = faction.get("id", "")
+				if council_vote_for_player(next_state, faction_id):
+					votes_for.append(faction_id)
+				else:
+					votes_against.append(faction_id)
+			council["charterVotesFor"] = votes_for
+			council["charterVotesAgainst"] = votes_against
+			council["lastVoteTurn"] = int(next_state.get("turn", 1))
+			var required_votes: int = maxi(1, int(ceil(float(next_state.get("factions", []).size()) * (2.0 / 3.0))))
+			if votes_for.size() >= required_votes:
+				council["charterStatus"] = "PASSED"
+				next_state = add_message(next_state, "和平统一宪章通过", "和平统一宪章已取得 %s/%s 票支持并正式通过。" % [str(votes_for.size()), str(next_state.get("factions", []).size())], "DIPLOMATIC")
+			else:
+				council["charterStatus"] = "VOTING"
+	next_state["galacticCouncil"] = council
+	return next_state
+
+static func determine_ai_victory_focus(state: Dictionary, faction: Dictionary) -> String:
+	var personality: Dictionary = faction.get("personality", {})
+	var military_score: float = float(faction.get("militaryPower", 0)) + float(personality.get("aggression", 0.0)) * 12.0
+	var science_score: float = float(faction.get("technologyLevel", 0)) * 18.0 + float(personality.get("rationality", 0.0)) * 10.0
+	var diplomacy_score: float = float(personality.get("loyalty", 0.0)) * 10.0 + float(personality.get("greed", 0.0)) * 6.0
+	for other: Dictionary in state.get("factions", []):
+		var other_id: String = other.get("id", "")
+		if other_id == faction.get("id", ""):
+			continue
+		if has_treaty(state, faction.get("id", ""), other_id, "ALLIANCE"):
+			diplomacy_score += 18.0
+		if has_treaty(state, faction.get("id", ""), other_id, "RESEARCH_ACCORD"):
+			science_score += 8.0
+		if has_treaty(state, faction.get("id", ""), other_id, "WAR_STATE"):
+			military_score += 14.0
+	if military_score >= science_score and military_score >= diplomacy_score:
+		return "MILITARY"
+	if science_score >= diplomacy_score:
+		return "SCIENCE"
+	return "DIPLOMATIC"
+
+static func update_ai_victory_focuses(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	for faction_index: int in range(next_state.get("factions", []).size()):
+		var faction: Dictionary = next_state["factions"][faction_index]
+		if faction.get("isPlayer", false):
+			continue
+		faction["victoryFocus"] = determine_ai_victory_focus(next_state, faction)
+		next_state["factions"][faction_index] = faction
+	return next_state
+
+static func apply_ai_victory_interference(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var science_report: Dictionary = player_science_victory_report(next_state)
+	var diplomacy_report: Dictionary = player_diplomatic_victory_report(next_state)
+	var military_report: Dictionary = player_military_victory_report(next_state)
+	for faction: Dictionary in next_state.get("factions", []):
+		if faction.get("isPlayer", false):
+			continue
+		var faction_id: String = faction.get("id", "")
+		var relation: Dictionary = relation_breakdown(next_state, "f_player", faction_id)
+		var hostile: bool = int(relation.get("trust", 0)) <= 10 or has_treaty(next_state, "f_player", faction_id, "WAR_STATE")
+		if not hostile:
+			continue
+		if str(science_report.get("phase", "INACTIVE")) in ["CORE_CHARGING", "FINAL_LAUNCH"]:
+			next_state = update_diplomatic_profile(next_state, faction_id, "firm", 2, "检测到玩家接近科技飞升，开始准备阻击。")
+			if int(next_state.get("turn", 1)) % 6 == 0:
+				next_state = add_diplomatic_message(next_state, faction_id, ["f_player"], "SINGLE", "PUBLIC", "WARNING", "奇观威慑", "%s 认为你的飞升奇观正在破坏银河平衡，并要求你停止推进计划。" % faction.get("name", faction_id), true)
+		if bool(diplomacy_report.get("council_established", false)) and str(diplomacy_report.get("charter_status", "INACTIVE")) in ["VOTING", "PASSED"]:
+			next_state = update_diplomatic_profile(next_state, faction_id, "scheming", 2, "检测到玩家接近外交胜利，尝试制造分裂。")
+			if int(next_state.get("turn", 1)) % 7 == 0:
+				next_state = add_diplomatic_memory(next_state, "联合国分裂活动", "%s 正在联合国内部游说反对票，试图阻止玩家达成外交胜利。" % faction.get("name", faction_id), ["f_player", faction_id], "EVENT", 2)
+		if int(military_report.get("controlled_habitable_systems", 0)) >= max(1, int(military_report.get("required_control", 0)) - 1):
+			next_state = update_diplomatic_profile(next_state, faction_id, "hostile", 2, "检测到玩家接近征服胜利，开始边境集结。")
 	return next_state
 
 static func ensure_faction_controls(state: Dictionary) -> Dictionary:
@@ -1545,9 +2195,16 @@ static func ensure_faction_controls(state: Dictionary) -> Dictionary:
 			if fleet.get("ownerId", "") == faction.get("id", ""):
 				military_power += fleet_power(fleet)
 		var technology_level: int = 0
-		for tech: Dictionary in next_state.get("technologies", []):
-			if tech.get("status", "") == "RESEARCHED":
-				technology_level += 1
+		var researched_tech_ids: Array = faction.get("researchedTechIds", [])
+		if faction.get("isPlayer", false):
+			for tech: Dictionary in next_state.get("technologies", []):
+				if tech.get("status", "") == "RESEARCHED":
+					technology_level += 1
+			technology_level = maxi(technology_level, researched_tech_ids.size())
+		elif faction.has("researchedTechIds"):
+			technology_level = researched_tech_ids.size()
+		else:
+			technology_level = int(faction.get("technologyLevel", 0))
 		faction["controlledSystems"] = controlled_systems
 		faction["population"] = population
 		faction["militaryPower"] = int(round(military_power))
@@ -1556,6 +2213,7 @@ static func ensure_faction_controls(state: Dictionary) -> Dictionary:
 	return next_state
 
 static func player_diplomatic_victory_report(state: Dictionary) -> Dictionary:
+	var council: Dictionary = galactic_council_data(state)
 	var total_rivals: int = 0
 	var alliance_count: int = 0
 	var accord_count: int = 0
@@ -1574,14 +2232,118 @@ static func player_diplomatic_victory_report(state: Dictionary) -> Dictionary:
 			peace_count += 1
 		if has_treaty(state, "f_player", faction_id, "WAR_STATE"):
 			war_count += 1
-	var achieved: bool = total_rivals > 0 and war_count == 0 and alliance_count >= 1 and accord_count >= total_rivals and peace_count >= total_rivals
+	var total_voters: int = state.get("factions", []).size()
+	var votes_for: int = int(council.get("charterVotesFor", []).size())
+	var required_votes: int = maxi(1, int(ceil(float(total_voters) * (2.0 / 3.0))))
+	var achieved: bool = bool(council.get("established", false)) and str(council.get("speakerFactionId", "")) == "f_player" and str(council.get("charterStatus", "")) == "PASSED" and votes_for >= required_votes
 	return {
 		"achieved": achieved,
 		"total_rivals": total_rivals,
 		"alliances": alliance_count,
 		"accords": accord_count,
 		"peace_partners": peace_count,
-		"wars": war_count
+		"wars": war_count,
+		"council_established": bool(council.get("established", false)),
+		"speaker_faction_id": str(council.get("speakerFactionId", "")),
+		"speaker_title": str(council.get("speakerTitle", "未设立")),
+		"charter_status": str(council.get("charterStatus", "INACTIVE")),
+		"votes_for": votes_for,
+		"votes_against": int(council.get("charterVotesAgainst", []).size()),
+		"required_votes": required_votes
+	}
+
+static func player_military_victory_report(state: Dictionary) -> Dictionary:
+	var player_id: String = "f_player"
+	var total_habitable_systems: int = 0
+	var controlled_habitable_systems: int = 0
+	var rival_capitals: int = 0
+	var captured_capitals: int = 0
+	for system: Dictionary in state.get("starSystems", []):
+		if system.get("colonyStage", "NONE") == "OUTPOST":
+			continue
+		if int(system.get("habitability", 0)) > 0:
+			total_habitable_systems += 1
+			if system.get("ownerId", null) == player_id:
+				controlled_habitable_systems += 1
+	for faction: Dictionary in state.get("factions", []):
+		if faction.get("isPlayer", false):
+			continue
+		var capital_system_id: String = str(faction.get("capitalSystemId", ""))
+		if capital_system_id == "":
+			continue
+		rival_capitals += 1
+		for system: Dictionary in state.get("starSystems", []):
+			if system.get("id", "") != capital_system_id:
+				continue
+			if system.get("ownerId", null) == player_id:
+				captured_capitals += 1
+			break
+	var required_control: int = int(ceil(float(total_habitable_systems) * 0.65))
+	var achieved_by_control: bool = total_habitable_systems > 0 and controlled_habitable_systems >= required_control
+	var achieved_by_capitals: bool = rival_capitals > 0 and captured_capitals >= rival_capitals
+	return {
+		"achieved": achieved_by_control or achieved_by_capitals,
+		"controlled_habitable_systems": controlled_habitable_systems,
+		"total_habitable_systems": total_habitable_systems,
+		"required_control": required_control,
+		"captured_capitals": captured_capitals,
+		"rival_capitals": rival_capitals,
+		"achieved_by_control": achieved_by_control,
+		"achieved_by_capitals": achieved_by_capitals,
+	}
+
+static func player_science_victory_report(state: Dictionary) -> Dictionary:
+	var project: Dictionary = ascension_project_data(state)
+	var ascension_progress: int = int(state.get("ascension_progress", 0))
+	var singularity_ready: bool = has_research(state, "tech_singularity_lattice")
+	var star_harmonics_ready: bool = has_research(state, "tech_star_harmonics")
+	var best_site: Dictionary = best_ascension_site(state, "f_player")
+	var site_name: String = str(project.get("siteSystemName", ""))
+	if site_name == "":
+		site_name = str(best_site.get("name", "暂无可用星系"))
+	var phase_name: String = str(project.get("stage", "INACTIVE"))
+	var phase_label: String = "未启动"
+	var status_summary: String = "尚未满足飞升计划启动条件。"
+	match phase_name:
+		"FOUNDATION":
+			phase_label = "基座铺设"
+			status_summary = "%s 正在进行基座铺设，剩余 %s 回合。" % [str(project.get("siteSystemName", "未知星系")), str(project.get("foundationTurnsRemaining", 30))]
+		"CORE_CHARGING":
+			phase_label = "核心充能"
+			status_summary = "%s 正在进行核心充能，进度 %s/%s。" % [str(project.get("siteSystemName", "未知星系")), str(project.get("chargeProgress", 0)), str(project.get("chargeRequired", 120))]
+			if str(project.get("blockedReason", "")) == "RESOURCE_SHORTAGE":
+				status_summary += " 当前因资源不足而暂停。"
+		"FINAL_LAUNCH":
+			phase_label = "最终启动"
+			status_summary = "%s 进入最终启动保护期，剩余 %s 回合。" % [str(project.get("siteSystemName", "未知星系")), str(project.get("finalTurnsRemaining", 15))]
+		"COMPLETED":
+			phase_label = "飞升完成"
+			status_summary = "%s 已完成文明飞升计划。" % str(project.get("siteSystemName", "未知星系"))
+		_:
+			phase_name = "INACTIVE"
+			phase_label = "未启动"
+			status_summary = "建议在 %s 启动飞升奇观建设。" % str(best_site.get("name", "暂无可用星系"))
+	return {
+		"achieved": phase_name == "COMPLETED",
+		"progress": ascension_progress,
+		"phase": phase_name,
+		"phase_label": phase_label,
+		"required_tech_ready": singularity_ready,
+		"supporting_tech_ready": star_harmonics_ready,
+		"best_site_name": site_name,
+		"foundation_turns_remaining": int(project.get("foundationTurnsRemaining", 30)),
+		"charge_progress": int(project.get("chargeProgress", 0)),
+		"charge_required": int(project.get("chargeRequired", 120)),
+		"final_turns_remaining": int(project.get("finalTurnsRemaining", 15)),
+		"globally_visible": bool(project.get("globallyVisible", false)),
+		"status_summary": status_summary,
+	}
+
+static func player_victory_progress_report(state: Dictionary) -> Dictionary:
+	return {
+		"military": player_military_victory_report(state),
+		"diplomatic": player_diplomatic_victory_report(state),
+		"science": player_science_victory_report(state),
 	}
 
 static func strategic_posture_report(state: Dictionary, source_faction_id: String = "f_player") -> Dictionary:
@@ -1599,15 +2361,15 @@ static func strategic_posture_report(state: Dictionary, source_faction_id: Strin
 		var pressure_score: int = maxi(int(relation.get("fear", 0)), -int(relation.get("trust", 0))) + maxi(int(trend.get("fear_delta", 0)), int(trend.get("memory_delta", 0)))
 		var opportunity_score: int = int(relation.get("trust", 0)) + int(relation.get("utility", 0)) + maxi(int(trend.get("trust_delta", 0)), 0)
 		if pressure_score >= 45 or has_treaty(state, source_faction_id, faction_id, "WAR_STATE"):
-			high_pressure.append(faction.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т缁€澶愭煕椤垵鏋涙い?))
+			high_pressure.append(faction.get("name", "未知势力"))
 		if opportunity_score >= 40 and not has_treaty(state, source_faction_id, faction_id, "WAR_STATE"):
-			high_opportunity.append(faction.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т缁€澶愭煕椤垵鏋涙い?))
+			high_opportunity.append(faction.get("name", "未知势力"))
 		if bool(trend.get("pressure_rising", false)):
-			deteriorating.append(faction.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т缁€澶愭煕椤垵鏋涙い?))
+			deteriorating.append(faction.get("name", "未知势力"))
 		if bool(trend.get("opportunity_rising", false)):
-			improving.append(faction.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т缁€澶愭煕椤垵鏋涙い?))
+			improving.append(faction.get("name", "未知势力"))
 		if has_treaty(state, source_faction_id, faction_id, "WAR_STATE") or pressure_score >= 55:
-			flashpoints.append(faction.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т缁€澶愭煕椤垵鏋涙い?))
+			flashpoints.append(faction.get("name", "未知势力"))
 	var recommended_posture: String = "CONSOLIDATE"
 	if not flashpoints.is_empty():
 		recommended_posture = "CONTAIN"
@@ -1622,11 +2384,11 @@ static func strategic_posture_report(state: Dictionary, source_faction_id: Strin
 		"improving": improving,
 		"flashpoints": flashpoints,
 		"recommended_posture": recommended_posture,
-		"summary": "濠德板€曢崐褰掓晪闁?%s / 闂備礁鎲￠懝楣冩偋閸涱垳绀?%s / 闂備浇顕栭崣鈧繛澶嬬〒閳?%s / 闂備礁鎼悧鎰浖閵娧勵潟濞村吋娼欓悙濠囨煟閹邦厼绲荤痪?%s" % [
-			", ".join(high_pressure) if not high_pressure.is_empty() else "闂?,
-			", ".join(high_opportunity) if not high_opportunity.is_empty() else "闂?,
-			", ".join(deteriorating) if not deteriorating.is_empty() else "闂?,
-			", ".join(improving) if not improving.is_empty() else "闂?
+		"summary": "高压对象 %s / 合作机会 %s / 恶化关系 %s / 改善关系 %s" % [
+			", ".join(high_pressure) if not high_pressure.is_empty() else "无",
+			", ".join(high_opportunity) if not high_opportunity.is_empty() else "无",
+			", ".join(deteriorating) if not deteriorating.is_empty() else "无",
+			", ".join(improving) if not improving.is_empty() else "无"
 		]
 	}
 
@@ -1642,24 +2404,40 @@ static func assess_game_status(state: Dictionary) -> Dictionary:
 			player_system_count += 1
 		elif system.get("ownerId", null) != null:
 			rival_system_count += 1
+	var military_report: Dictionary = player_military_victory_report(next_state)
 	var diplomacy_report: Dictionary = player_diplomatic_victory_report(next_state)
-	var diplomacy_status: String = "???????" if diplomacy_report.get("achieved", false) else "?? %s / ?? %s / ?? %s" % [str(diplomacy_report.get("alliances", 0)), str(diplomacy_report.get("accords", 0)), str(diplomacy_report.get("peace_partners", 0))]
-	next_state["objective"] = "?? %s/3 ?? ? ?? %s ? ?? %s/100" % [str(player_system_count), diplomacy_status, str(next_state.get("ascension_progress", 0))]
+	var science_report: Dictionary = player_science_victory_report(next_state)
+	var diplomacy_status: String = "外交目标已完成"
+	if not diplomacy_report.get("achieved", false):
+		if bool(diplomacy_report.get("council_established", false)):
+			diplomacy_status = "%s %s/%s票" % [str(diplomacy_report.get("charter_status", "VOTING")), str(diplomacy_report.get("votes_for", 0)), str(diplomacy_report.get("required_votes", 0))]
+		else:
+			diplomacy_status = "联合国未成立 / 和平伙伴 %s" % str(diplomacy_report.get("peace_partners", 0))
+	var science_status: String = "%s %s/100" % [str(science_report.get("phase_label", "未启动")), str(science_report.get("progress", 0))]
+	if str(science_report.get("phase", "INACTIVE")) == "FOUNDATION":
+		science_status = "%s 剩余%s回合" % [str(science_report.get("phase_label", "基座铺设")), str(science_report.get("foundation_turns_remaining", 0))]
+	elif str(science_report.get("phase", "INACTIVE")) == "CORE_CHARGING":
+		science_status = "%s %s/%s" % [str(science_report.get("phase_label", "核心充能")), str(science_report.get("charge_progress", 0)), str(science_report.get("charge_required", 0))]
+	elif str(science_report.get("phase", "INACTIVE")) == "FINAL_LAUNCH":
+		science_status = "%s 剩余%s回合" % [str(science_report.get("phase_label", "最终启动")), str(science_report.get("final_turns_remaining", 0))]
+	elif str(science_report.get("phase", "INACTIVE")) == "COMPLETED":
+		science_status = "飞升完成"
+	next_state["objective"] = "军事 %s/%s 星系控制 | 外交 %s | 科技飞升 %s" % [str(military_report.get("controlled_habitable_systems", 0)), str(military_report.get("required_control", 0)), diplomacy_status, science_status]
 	if player_system_count == 0:
 		next_state["status"] = "DEFEAT"
-		return add_message(next_state, "????", "????????????????", "SYSTEM")
-	if int(next_state.get("ascension_progress", 0)) >= 100 and has_research(next_state, "tech_singularity_lattice"):
+		return add_message(next_state, "帝国覆灭", "你已失去全部控制星系，本局以失败结束。", "SYSTEM")
+	if bool(science_report.get("achieved", false)):
 		next_state["status"] = "VICTORY"
 		next_state["victory_path"] = "ASCENSION"
-		return add_message(next_state, "????", "????????????????????", "SYSTEM")
+		return add_message(next_state, "科技飞升胜利", "你的帝国已完成文明飞升计划的全部阶段，达成科技胜利。", "SYSTEM")
 	if diplomacy_report.get("achieved", false):
 		next_state["status"] = "VICTORY"
 		next_state["victory_path"] = "DIPLOMATIC"
-		return add_message(next_state, "????", "??????????????????????????????????", "SYSTEM")
-	if player_system_count >= 3 or rival_system_count == 0:
+		return add_message(next_state, "外交胜利", "你已通过联盟、协定与和平网络建立银河主导地位。", "SYSTEM")
+	if bool(military_report.get("achieved", false)) or rival_system_count == 0:
 		next_state["status"] = "VICTORY"
 		next_state["victory_path"] = "MILITARY"
-		return add_message(next_state, "????", "????????????????????", "SYSTEM")
+		return add_message(next_state, "军事胜利", "敌对势力已无力争夺星图，你取得了军事胜利。", "SYSTEM")
 	next_state["status"] = "PLAYING"
 	next_state["victory_path"] = null
 	return next_state
@@ -1667,15 +2445,35 @@ static func assess_game_status(state: Dictionary) -> Dictionary:
 static func event_reward(event_type: Variant) -> Dictionary:
 	match str(event_type):
 		"ANCIENT_RUINS":
-			return {"title": "闂備礁鎲￠悷锝夊磹閹捐鑸规い鎺戝閻掑吋淇婇妶鍛仾濠?, "content": "濠电偠鎻徊鎸庢叏瀹勬壋鏋旈柟杈剧畱缁€瀣繆椤栨繍鍤欓悹褎鎸冲濠氬礃椤忓嫭鐏嗛悶姘懇閹綊宕堕妸銉т化缂備緡鐓夌换婵嗙暦閿濆围闁告洦鍋呴弳鏇熺箾閿濆懏绀岄柛鎾寸箞閹儵鏁愭径濠冪€梺缁橆殔閻楀棛绮婇敃鍌涚叆婵炴垶顭囬悞閿嬵殽閻愯尙绠版い鏇樺劚铻栭柍褜鍓氱€靛ジ骞囬鐘灃濠殿喗锕╅崑鍡涙偡閵忋垻纾煎璺侯儏閻忊晠鏌ｉ弽銊︺仢闁诡啫鍥х厸闁告洦鍘归崑鎺楁⒑?, "reward": {"food": 0, "minerals": 25, "industry": 40, "energy": 10}}
+			return {
+				"title": "远古遗迹",
+				"content": "勘探队在废墟深处找到可回收的工业构件与矿物缓存，帝国工程部门已完成打包回收。",
+				"reward": {"food": 0, "minerals": 25, "industry": 40, "energy": 10}
+			}
 		"RICH_ASTEROIDS":
-			return {"title": "闂佽閰ｅ褔鎯夋總鍛婂亜闁糕剝鐟ら悞濠囩叓閸ャ劌鍤柡鈧禒瀣厸闁告洦鍘奸弸鏃堟煕?, "content": "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾艾鍞ㄩ梺鎼炲労娴滃爼宕捄濂界懓顭ㄩ崘鈺婃＆闂佺粯绻嶉崰妤冪矉閹烘垹鏆嬮柟闈涘暱娴滈箖鏌ゅù瀣珖闁哥偟鏁婚弻銈夊级閹搭厽顎嗙紓浣介哺缁诲牆鐣烽妷锔藉劅闁炽儱纾ぐ楣冩⒒娓氬洤鏋旈柛鏃€鍨佃灋妞ゆ帒瀚悙濠囨煟閹邦剛鎽犻柡鍡╀簻闇夋繝濠傚暞椤ユ粓鏌曢崶褎鍠橀柡灞界焷缁犳盯寮撮悩鍙夋毄濠电偛鐡ㄧ猾鍌炲磼濠婂懏鍠涢梻浣哄帶閻ゅ洦鎱ㄩ妶鍥С妞ゆ洍鍋撳┑?, "reward": {"food": 0, "minerals": 50, "industry": 0, "energy": 20}}
+			return {
+				"title": "富矿小行星带",
+				"content": "该星系的小行星带富含高品位矿脉，临时开采队已带回一批矿石与可用能源晶体。",
+				"reward": {"food": 0, "minerals": 50, "industry": 0, "energy": 20}
+			}
 		"SOLAR_STORM":
-			return {"title": "闂備浇顕栭崢鐣屾暜濡も偓鍗遍柨鏃傜摂濡插綊骞栧ǎ顒€鐏柣?, "content": "濠电偠鎻徊鎸庢叏閺夋埊鑰挎い蹇撴媼濡插綊骞栧ǎ顒€鐏柣锕€缍婂鍫曞醇濠靛洩纭€缂備線纭搁崢濂割敋濞嗘挻鎯為柛锔诲幖缂嶅嫭绻涚€涙鐭婃俊顐ｆ⒐瀵板嫬顓兼径濠勭潉闂佸壊鍋呭ú鏍р枍濮樿埖鐓犻柛蹇撴噽閻瑦淇婇妤€浜鹃梻浣告啞鐢銆冮幇顔筋潟婵犻潧顑嗛崵鏃傗偓鐟板婢瑰棛鎹㈡担鑲濇盯鎮ч崼銏㈢暤濡炪倧绠戦…鐑藉箠濡ゅ懏鍤嶉柕澹懎鐓冮梻浣侯焾鐞氼偊宕濆畝鍕婂洭顢楅崟顐?, "reward": {"food": 0, "minerals": 0, "industry": 10, "energy": 45}}
+			return {
+				"title": "太阳风暴余波",
+				"content": "恒星活动短暂冲击了轨道设施，但工程队借机完成了一轮应急改造，留下部分工业与能源收益。",
+				"reward": {"food": 0, "minerals": 0, "industry": 10, "energy": 45}
+			}
 		"PIRATE_RAID":
-			return {"title": "婵犵數鍋為幐鎶剿夐幘瓒佸搫顓奸崶銊ヤ粡濡炪倖鎸鹃崰搴ㄋ?, "content": "闂備胶顢婄紙浼村磹濞戙垹鏄ラ柛娑樼摠閸ゅ霉閻撳海鎽犵悮婵嬫⒑閸涘﹤鐏ユい顓犲厴閸┾偓妞ゆ垼妫勬禍鐐箾鐎涙鐭婃俊顐ｇ矒閿濈偤濡搁埡浣侯吋闂佺懓鍢叉径鍥磻閹捐妞介柛鎰典簽椤︻喗绻涙潏鍓у埌婵☆偅顨婇獮鍐ㄎ旈崨顓狀槹闂侀潧鐗嗗ú銈呪枔閻樺眰鈧帒顫濋鐘电暭闂佸憡鏋崶銊у姸濡炪倖鎸鹃崑娑氱礊閳ь剟姊洪悷鐗堣础闁哥姴閰ｆ俊鐢稿箣閿曗偓杩?, "reward": {"food": -8, "minerals": -12, "industry": 0, "energy": -18}}
+			return {
+				"title": "海盗袭扰",
+				"content": "本地航路遭遇掠袭，商船与补给线受到影响，帝国为稳定局势付出了额外资源代价。",
+				"reward": {"food": -8, "minerals": -12, "industry": 0, "energy": -18}
+			}
 		"WARP_STORM":
-			return {"title": "闂佽崵濮撮幖顐﹀疮瀹曞洨绱﹂柛蹇曗拡濡插綊骞栧ǎ顒€鐏柣?, "content": "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晝閸屾碍宓嶉梺闈浥堥弲鈺佄涢幋锔界厸闁糕剝鐟Λ搴ｇ磼閺冨倸鏋旂紒杈ㄦ尭椤粓鍩€椤掑嫬闂ù鐓庣摠閳锋牠鏌涢埄鍐炬當闁绘挸鍊搁埥澶愬箻瀹曞泦銈夋嚕濞嗘挻鍊甸悷娆忓娴溿垻绱掑畝濠傚婵炶偐绮幏鍛喆閸曨剦鍟€闂備胶顢婇鏍闯椤栨粍顫曟繝闈涙处婵挳鏌涢埄鍐闁绘帒顭峰娲敆娴ｇ懓鏆楅柤鎸庣懇閹鎲撮崟顓ф殹闂侀€炲苯鍔柛灞剧矌閹差噣姊婚崒姘仼缂佸鐓￠崺鈧?, "reward": {"food": 0, "minerals": 0, "industry": 8, "energy": -10}}
+			return {
+				"title": "跃迁风暴",
+				"content": "异常跃迁潮汐扰乱了航道与阵列，维修与调度消耗了额外资源，但也迫使系统完成了局部适应性升级。",
+				"reward": {"food": 0, "minerals": 0, "industry": 8, "energy": -10}
+			}
 		_:
 			return {}
 
@@ -1690,34 +2488,34 @@ static func resolve_player_system_event(state: Dictionary, system_id: String) ->
 		if reward_data.is_empty():
 			return next_state
 		system["eventResolved"] = true
-		system["note"] = "%s 闂備礁鎲″ú妯挎懌闁汇埄鍨辨竟鍡涘焵椤掑倹鍤€闁哄牜鍓熷畷鐟邦潩鐠轰綍? % system.get("note", "")
+		system["note"] = "%s 事件已处理，局势暂时恢复稳定。" % system.get("note", "")
 		next_state["starSystems"][system_index] = system
 		for faction_index: int in range(next_state["factions"].size()):
 			var faction: Dictionary = next_state["factions"][faction_index]
 			if faction.get("id", "") == player.get("id", ""):
 				faction["resources"] = add_resources(faction.get("resources", {}), reward_data.get("reward", {}))
 				next_state["factions"][faction_index] = faction
-		return add_message(next_state, reward_data.get("title", ""), "%s闂?s" % [system.get("name", ""), reward_data.get("content", "")], "EVENT")
+		return add_message(next_state, reward_data.get("title", ""), "%s：%s" % [system.get("name", ""), reward_data.get("content", "")], "EVENT")
 	return next_state
 
 static func trigger_narrative_event(state: Dictionary, event_template_id: String, target_system_id: String, affected_factions: Array = [], narrative_override: String = "", outcome_modifiers: Dictionary = {}) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var event_type: String = "ANCIENT_RUINS"
-	var default_note: String = "闂佸搫顦悧蹇涘箠閹炬眹鈧倿濡搁敃鈧閬嶆煟濡搫鏆卞┑鈩冨▕閺屾盯鏁愰崘銊ヮ瀴閻庤娲滈崰鏍嵁閹寸偛绶炲┑鐘插€婚崢鎺楁⒑閸濆嫬鈧绔熼崱妞绘灁闁瑰瓨绻嶉崵鏇㈡煕鐏炵偓鐨戦柛鈺傤殔鑿愰柛銉岛閸嬫捇宕橀幓鎺嗘瀼闂?
-	var follow_up_options: Array = ["闂佽崵濮撮鍛村疮椤栫偞鍋?, "闁诲孩顔栭崰鎺楀磻閹剧粯鐓?, "闂佽绻愮换瀣濮樿泛缁?]
+	var default_note: String = "边境勘探队在目标星系发现异常信号，建议立即决定后续处置方案。"
+	var follow_up_options: Array = ["派工程队调查", "保持观察", "直接开发回收"]
 	match event_template_id:
 		"ANCIENT_RUINS_DISCOVERY":
 			event_type = "ANCIENT_RUINS"
-			default_note = "闂備礁鎲￠悷锕傚垂瑜版帞宓侀柛銉ｅ妽娴溿倖绻濇繝鍌氭殭缂傚秵妫冨娲敆娓氬洦鐣介梺纭呭煐椤ㄥ棛绮氶柆宥呯伋闁告劖褰冮埢蹇涙⒑閹稿海鈽夐柤娲诲灣缁辨捇骞橀懜闈涱€涘銈嗘婵倝鎮滈敃鍌涒拺妞ゆ帒锕︾粔顒勬煕閳轰胶鐒告慨濠傘偢閹垹鐣￠幍顔肩秹闂備線鈧稖顒熸繛鐓庢健閸┾偓?
-			follow_up_options = ["闂佽崵濮撮鍛村疮椤栫偞鍋傞柨鐔哄У閻掑吋淇婇妶鍛仾濠?, "闂備焦鎮堕崕鎶藉磻閻愬搫鏋侀柛锔诲幘閻捇鏌熺€电浠滈摶?, "闂備礁鎲￠崝鏍矙閹邦喛濮抽柕濞у倻鍓ㄦ繛鎾村焹閸嬫捇鏌￠埀?]
+			default_note = "勘探队在古代遗迹中发现仍可运作的设施节点。你可以深入调查、保持观望，或直接拆解回收。"
+			follow_up_options = ["派工程队调查", "建立联合研究站", "直接开发回收"]
 		"PIRATE_RAID":
 			event_type = "PIRATE_RAID"
-			default_note = "婵犵數鍋為幐鎶剿夐幘瓒佸搫顓奸崥銈堟閹风娀骞撻幑顐ｎ殕閹便劌鈹戦幘璺哄煂濠电姭鍋撴い蹇撶墕绾偓闂佹悶鍎崝瀣礆婵犲洦鐓ユ繛鎴烆焾鐎氫即鏌ｉ宥呭⒋闁哄苯鐗撴俊鎼佸Ω鐎ｎ亶妲虹紒杈ㄥ笒閳诲酣骞嬪┑鍥╂瀮闂備礁缍婂褔鎮樺┑鍫熸殰闁搞儺鍓欒繚?
-			follow_up_options = ["婵犵數鍋涘璺虹暦濮椻偓瀹曡櫣浠︽慨鎰ㄥ亾閹烘宸濇い鎾跺剱濡?, "闂備礁鎲″缁樻叏閺夋埈鍟呴梺顒€绉寸粻顕€鏌曢崼婵堝闁?, "闂備礁鎼Λ妤呭磹閻熼偊娓婚柛灞剧矋閸犲棝鏌涢弴銊ョ仧缂?]
+			default_note = "当地航线遭遇海盗袭扰。你可以选择强势清剿、协商护航，或投入资源加固航路。"
+			follow_up_options = ["派舰队清剿", "与商路势力协商护航", "投入资源加固航路"]
 		"WARP_STORM":
 			event_type = "WARP_STORM"
-			default_note = "闂佽崵濮撮幖顐﹀疮瀹曞洨绱﹂柛蹇曗拡濡插綊骞栧ǎ顒€鐏柣锕€缍婇弻鐔煎垂椤愶絿鍑℃繝娈垮枓閺呯娀骞婂鍫晜闁割偅绮岄ˉ姘舵⒑閹稿海鈽夐柣顒€銈搁幃锟狀敇閵忕姴鐝橀梺缁樻煥閸㈡煡寮崼鏇熷€垫繛鎴烆仾椤忓嫸鑰挎い蹇撶墕鐎氬鏌涘┑鍡楊仼鐞氱喐淇婇悙宸剰闂佸府绲介埢宥夊箻鐠囧弬?
-			follow_up_options = ["缂傚倷绀侀ˇ浼村垂閻㈠壊鏁嗛柣鏃傚劋閸犲棝鏌涚仦鍓с€掗柕?, "闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇棄娈濆銈呯箰閻楀懏绔?, "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?]
+			default_note = "跃迁风暴正在穿越目标星系。你可以派工程队稳定航道、临时封闭节点，或趁乱进行高风险回收。"
+			follow_up_options = ["派工程队稳定航道", "临时封闭跃迁节点", "趁乱进行高风险回收"]
 	for system_index: int in range(next_state.get("starSystems", []).size()):
 		var system: Dictionary = next_state["starSystems"][system_index]
 		if system.get("id", "") != target_system_id:
@@ -1748,8 +2546,8 @@ static func trigger_narrative_event(state: Dictionary, event_template_id: String
 	var affected_names: Array = []
 	for faction_id: String in affected_factions:
 		affected_names.append(get_faction_by_id(next_state, faction_id).get("name", faction_id))
-	var suffix: String = "" if affected_names.is_empty() else " 闂備礁鎲￠悷锕傘€冮崨顔鹃檮闁哄稁鍘兼导鐘碘偓骞垮劚閹冲酣鍩ｉ姀銈嗙厱? %s闂? % ", ".join(affected_names)
-	return add_message(next_state, "闂佽閰ｅ褔宕ョ€ｎ剚顫曢柕濠忓椤╂煡鎮楅敐鍌涙珕妞?, "%s%s" % [default_note if narrative_override == "" else narrative_override, suffix], "EVENT")
+	var suffix: String = "" if affected_names.is_empty() else " 受影响势力：%s。" % ", ".join(affected_names)
+	return add_message(next_state, "叙事事件触发", "%s%s" % [default_note if narrative_override == "" else narrative_override, suffix], "EVENT")
 
 static func apply_director_intervention(state: Dictionary, intervention_type: String, intensity: float = 0.5, duration: int = 3) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -1766,7 +2564,7 @@ static func apply_director_intervention(state: Dictionary, intervention_type: St
 		"SPAWN_PIRATES":
 			for system: Dictionary in next_state.get("starSystems", []):
 				if system.get("visibilityLevel", "") == "FULL" and system.get("ownerId", null) == null:
-					return trigger_narrative_event(next_state, "PIRATE_RAID", system.get("id", ""), ["f_player"], "婵犵數鍋為幐鎶剿夐幘瓒佸搫顓奸崶鈺冾槰闂侀潧鐗嗛幊鎰鐠囨祴鏀芥い鏃傗拡閸庢挻銇勯鐘插妤犵偛绉归獮蹇撶暆閳ь剟鎮电捄渚唵鐟滃秹宕幎钘夋槬闁告稑鐡ㄩ悞濂告煙閻愵剙顣抽柛?, {"threat_scale": intensity})
+					return trigger_narrative_event(next_state, "PIRATE_RAID", system.get("id", ""), ["f_player"], "边境航线出现海盗集结迹象，附近中立航道正遭受持续袭扰。", {"threat_scale": intensity})
 		"BOOST_AI":
 			for index: int in range(next_state.get("factions", []).size()):
 				var faction: Dictionary = next_state["factions"][index]
@@ -1778,7 +2576,7 @@ static func apply_director_intervention(state: Dictionary, intervention_type: St
 				resources["energy"] = int(resources.get("energy", 0)) + int(round(20.0 * intensity))
 				faction["resources"] = resources
 				next_state["factions"][index] = faction
-			return add_message(next_state, "闂佽閰ｅ褔宕ョ€ｎ剚顫曢柕濞炬櫇瀹撲線鏌＄仦璇插姶闁?, "濠电姰鍨奸崺鏍儗椤曗偓閺?AI 闂備礁鎲￠弻銊╂倶濠靛洦鍙忛煫鍥ㄧ☉閹瑰爼鏌曟繛鍨姢妞ゆ柨閰ｉ弻娑橆潩椤掍礁鏀Δ鐘靛仜缁绘劙顢氶妷銉富闁告挆鍐╂珦濠碘槅鍋嗘晶妤冩崲閸岀倛鍥ㄧ節濮橆厼鍓梺鍛婃处閸撴瑩鎮樺☉姗嗙唵閻犺櫣鍎ゆ径鍕煛娓氬洤娅嶆鐐存尰濞煎繘宕滆椤︻喗淇婇锝嗙凡閻庢凹鍨堕、姗€骞栨担鍝ヮ唶婵炶揪缍€濞咃綁寮?%s 闂備焦鎮堕崕鎶藉磻濞戙垹绠栭幖娣妼杩? % str(duration), "EVENT")
+			return add_message(next_state, "导演干预", "外部势力获得了额外的资源补给，预计在接下来的 %s 回合内会更加积极扩张。" % str(duration), "EVENT")
 		"REDUCE_RESOURCES":
 			for index: int in range(next_state.get("factions", []).size()):
 				var faction: Dictionary = next_state["factions"][index]
@@ -1789,11 +2587,11 @@ static func apply_director_intervention(state: Dictionary, intervention_type: St
 				resources["energy"] = max(0, int(resources.get("energy", 0)) - int(round(24.0 * intensity)))
 				faction["resources"] = resources
 				next_state["factions"][index] = faction
-			return add_message(next_state, "闂佽閰ｅ褔宕ョ€ｎ剚顫曢柕濞炬櫇瀹撲線鏌＄仦璇插姶闁?, "闂佹眹鍩勯崹杈╂崲閸屾鐟拔旈崨顓⌒曢柟鑲╄ˉ閳ь剙纾ぐ楣冩⒒娓氣偓缁犳牜绮婚弽銊ヮ嚤闁告劦鍠楅悞濂告煕閵夘垰顩柛鐔凤躬閺岋綁顢樿楠炴淇婇悙鎻掆偓鍧楃嵁瀹ュ绾ч柛顭戝暕濡ゅ懏鐓ユ繛鎴烆焽閻掗绱掓笟鍥т簻闁崇懓鍟撮獮鍥敆閳ь剚绂嶇捄渚唵閻犺櫣鍎ら幖鎰版煕閵堝骸寮柟顔藉▕閹囧醇濠靛牊顕涢梻浣告啞閺岋綁宕濇繝鍥х劦?, "EVENT")
+			return add_message(next_state, "导演干预", "后勤与能源网络受到压制，本回合你损失了一部分粮食与能源储备。", "EVENT")
 		"TRIGGER_CRISIS":
 			for system: Dictionary in next_state.get("starSystems", []):
 				if system.get("ownerId", null) == "f_player":
-					return trigger_narrative_event(next_state, "WARP_STORM", system.get("id", ""), ["f_player"], "闂備礁鎲￠悧鏇㈠箹椤愶附鍋傛繛鍡樺灩濡垳鎲稿鍛殼闁告洦鍨扮€氬鏌ｉ幋鐑囦緵闁告柡鍋撻梻渚€娼荤拹鐔煎礉瀹ュ鍨傛慨妯煎仺娴滆銇勯顐㈡灓缂佲偓婢舵劖鍋ｉ柛婵嗗閺嗐垻绱掗崫鍕倯妞わ妇澧楅幆鏃堝閿涘嫭鈻屾繝鐢靛仜椤︻參宕归悷閭﹀殨濡炲瀛╅弳婊勭節闂堟稒顥炵紒鍌氭喘閺岋綁濡堕崨顕呮闂佺粯鎸婚悷鈺備繆?, {"storm_scale": intensity})
+					return trigger_narrative_event(next_state, "WARP_STORM", system.get("id", ""), ["f_player"], "异常跃迁风暴正在逼近你的殖民星系，航道与轨道设施都面临压力测试。", {"storm_scale": intensity})
 	return next_state
 
 static func resolve_narrative_event_choice(state: Dictionary, event_id: String, option_label: String) -> Dictionary:
@@ -1818,7 +2616,7 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 			break
 	var event_template_id: String = str(target_event.get("eventTemplateId", ""))
 	match option_label:
-		"闂佽崵濮撮鍛村疮椤栫偞鍋傞柨鐔哄У閻掑吋淇婇妶鍛仾濠?, "缂傚倷绀侀ˇ浼村垂閻㈠壊鏁嗛柣鏃傚劋閸犲棝鏌涚仦鍓с€掗柕?:
+		"派工程队调查", "派工程队稳定航道":
 			for index: int in range(next_state.get("factions", []).size()):
 				var faction: Dictionary = next_state["factions"][index]
 				if not faction.get("isPlayer", false):
@@ -1830,8 +2628,8 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 				next_state["factions"][index] = faction
 			if event_template_id == "ANCIENT_RUINS_DISCOVERY":
 				next_state["researchProgress"] = float(next_state.get("researchProgress", 0.0)) + 18.0
-			next_state = add_diplomatic_memory(next_state, "闂佽瀛╅崘濠氭⒔閸曨偓鑰块柧蹇ｅ亜缁剁偤鏌涢弴銊ュ箻闁?, "%s 闂備焦鐪归崝宀€鈧凹鍓涘Σ鎰板箻閼稿灚娈伴梻鍌楀亾闁归偊鍠氬▓銈嗙箾鐎电校闁稿骸銈搁敐鐐烘晝閸屾稑浠洪梺闈涱焾閸婃鎳濋崜褏纾煎璺侯儏閻忊晠鏌ｉ弽顒侇仩闁瑰弶鎸冲畷鎺戔槈濮樸儱浠﹂梻浣瑰缁嬫垿鎳熼婊呯當闁挎繂顦悙濠囨煠閹帒鍔滄繛鍫ｎ嚙闇夐柨婵嗘鐏忕増绻涢幓鎺撳仴鐎规洘鍨肩粻娑㈠箻閺夋垟鍋撴繝姘厽闁绘劕寮堕ˉ鐐烘煃瑜滈崕鎼佸礃閻愵儷鐔兼⒑閼姐倕浠滄俊顐ｎ殔閻ｇ敻宕熼姘彉闂佽鍘藉濠氬磻? % system_name, ["f_player"], "EVENT", 2)
-		"闂備焦鎮堕崕鎶藉磻閻愬搫鏋侀柛锔诲幘閻捇鏌熺€电浠滈摶?, "闂備礁鎲″缁樻叏閺夋埈鍟呴梺顒€绉寸粻顕€鏌曢崼婵堝闁?, "闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇棄娈濆銈呯箰閻楀懏绔?:
+			next_state = add_diplomatic_memory(next_state, "工程调查报告", "%s 的调查行动带回了可观的工程样本与现场数据。" % system_name, ["f_player"], "EVENT", 2)
+		"建立联合研究站", "与商路势力协商护航", "临时封闭跃迁节点":
 			for system_index: int in range(next_state.get("starSystems", []).size()):
 				var system: Dictionary = next_state["starSystems"][system_index]
 				if system.get("id", "") != system_id:
@@ -1841,7 +2639,7 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 				system["eventResolved"] = true
 				next_state["starSystems"][system_index] = system
 				break
-			if option_label == "闂備礁鎲″缁樻叏閺夋埈鍟呴梺顒€绉寸粻顕€鏌曢崼婵堝闁?:
+			if option_label == "与商路势力协商护航":
 				for index: int in range(next_state.get("relationships", []).size()):
 					var relation: Dictionary = next_state["relationships"][index]
 					var touches_merchant: bool = (relation.get("factionAId", "") == "f_player" and relation.get("factionBId", "") == "f_merchant") or (relation.get("factionAId", "") == "f_merchant" and relation.get("factionBId", "") == "f_player")
@@ -1851,9 +2649,9 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 					relation["utility"] = int(relation.get("utility", 0)) + 4
 					relation["level"] = relation_level(int(relation.get("trust", 0)))
 					next_state["relationships"][index] = relation
-				next_state = update_diplomatic_profile(next_state, "f_merchant", "friendly", 3, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦粻娑㈡煙缁嬪潡顎楀鐟扮墦閺岀喖鎳滈崹顐ゎ槬闂佸憡鐟ュΛ婵嗙暦濠靛棌妲堥柕蹇曞У椤忊剝绻涢敐鍛缂佽鍟幈銊╁閳╁啰绉堕梺鑽ゅ枛閸嬪﹪寮抽弮鍫熺厱闁绘棃鏀遍ˉ锟犳煟椤撱垻鐣洪柡浣哥Ф娴狅妇鎲撮敐鍛闂佺粯鎸稿ù椋庢崲娴ｈ櫣纾藉ù锝呯墕閹虫劙寮ィ鍐╃厱婵﹩鍓涙晶鏃傜磽瀹ュ棙顥堝┑?)
-				next_state = add_diplomatic_memory(next_state, "闂備浇澹堟ご鎼佸蓟閵娾晛绠栭幖娣妼缁狀噣鏌曢崼婵堝闁?, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦幑?%s 闂備礁鎲＄粙蹇涘礉韫囨洜鍗氶柣鏃傚帶缁€澶愭煟濡绲荤紒璁崇窔閺岀喖鐓幓鎺嗗亾濞戙垹鏄ラ柛娑樼摠閺咁剟鎮橀悙璺盒撴繛鍛焸閹綊骞囬鐐殿槰婵炲濮撮悧鎾诲箚閸曨垱鍋勫┑鍌氼槸濞堟悂姊洪崨濠呭闁绘鎳愮槐鐐哄籍閸繄鐤€闂婎偄娲﹂弻銊︽叏閽樺妲堥柟鍓ь劜瀹搞儳鈧娲栭惌鍌涗繆? % system_name, ["f_player", "f_merchant"], "AGREEMENT", 2)
-		"闂備礁鎲￠崝鏍矙閹邦喛濮抽柕濞у倻鍓ㄦ繛鎾村焹閸嬫捇鏌￠埀?, "婵犵數鍋涘璺虹暦濮椻偓瀹曡櫣浠︽慨鎰ㄥ亾閹烘宸濇い鎾跺剱濡?, "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?:
+				next_state = update_diplomatic_profile(next_state, "f_merchant", "friendly", 3, "玩家愿意通过合作方式稳定航路。")
+				next_state = add_diplomatic_memory(next_state, "商路护航协定", "%s 已与商路势力达成临时护航安排，局部航线恢复稳定。" % system_name, ["f_player", "f_merchant"], "AGREEMENT", 2)
+		"直接开发回收", "派舰队清剿", "投入资源加固航路":
 			for system_index: int in range(next_state.get("starSystems", []).size()):
 				var system: Dictionary = next_state["starSystems"][system_index]
 				if system.get("id", "") != system_id:
@@ -1862,7 +2660,7 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 				system["eventResolved"] = true
 				next_state["starSystems"][system_index] = system
 				break
-			if option_label == "婵犵數鍋涘璺虹暦濮椻偓瀹曡櫣浠︽慨鎰ㄥ亾閹烘宸濇い鎾跺剱濡?:
+			if option_label == "派舰队清剿":
 				for fleet_index: int in range(next_state.get("fleets", []).size()):
 					var fleet: Dictionary = next_state["fleets"][fleet_index]
 					if fleet.get("ownerId", "") != "f_player":
@@ -1871,9 +2669,9 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 						continue
 					next_state["fleets"][fleet_index] = damage_fleet(fleet, 10)
 					break
-				next_state = update_diplomatic_profile(next_state, "f_merchant", "firm", 1, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱妫涢埢鏃堟偣閸ャ劌绲荤悮鐔封攽閻愬瓨灏柟铏姍楠炲啯绻濋崑顖濐潐椤︾増鎯旈姀顫穿闂備焦瀵х粙鎴︽儗娓氣偓椤㈡岸鍩￠崨顓炲挤闁硅偐琛ラ埀顒€鍟跨欢顓熺箾鐎电孝缂佸娼欓敃銏ゎ敂閸℃瑧锛滈柣搴㈢⊕閿氱悮姗€鏌℃径濠勫ⅱ闁硅櫕鎹囬妴鍌炲Ω瑜忛惌鎾绘煃鏉炴媽鍏岀痪鏉跨Ч閺?)
-				next_state = add_diplomatic_memory(next_state, "婵犵數鍋為幐鎼佸箠鎼淬垻鐝舵繛鍡楃贩鐟欏嫷妲归幖娣灮閿?, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦幑?%s 闂備礁鎲￠悷锕傚垂婵傜绠查柨婵嗘噷閳ь剚甯″畷銊╊敇閻戝棙锛侀梺鑽ゅ仦缁嬫垿鎳熼娑欏弿闁冲搫鎳忛弲顒傗偓鍏夊亾闁告劏鏅╂禒閬嶆⒑閸濆嫮澧曟い锔垮嵆瀹曞綊顢楅崟顐ゎ唹闂佺粯鏌ㄦ晶搴ｇ矙閼姐倗纾奸悗锝庝簻閺嗛亶鏌ｉ敐鍥т壕缂佸倸绉瑰畷鍗炍旈崘鈺傚闂備礁鎲″Λ渚€鏁撻妷鈺佺劦? % system_name, ["f_player", "f_merchant"], "EVENT", 3)
-			elif option_label == "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?:
+				next_state = update_diplomatic_profile(next_state, "f_merchant", "firm", 1, "玩家选择以武力压制海盗威胁。")
+				next_state = add_diplomatic_memory(next_state, "海盗清剿行动", "%s 周边航道展开清剿作战，玩家舰队承受了少量战损。" % system_name, ["f_player", "f_merchant"], "EVENT", 3)
+			elif option_label == "投入资源加固航路":
 				for index: int in range(next_state.get("factions", []).size()):
 					var faction: Dictionary = next_state["factions"][index]
 					if not faction.get("isPlayer", false):
@@ -1883,10 +2681,10 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 					resources["industry"] = int(resources.get("industry", 0)) + 16
 					faction["resources"] = resources
 					next_state["factions"][index] = faction
-				next_state = add_diplomatic_memory(next_state, "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱鎷嬮崵鏇炍旈敂绛嬪劌闁衡偓閻ｅ瞼纾肩€光偓閸愩劌濮风紓?%s 闂備焦鐪归崝宀€鈧凹鍓涘Σ鎰板箻閼稿灚娈板┑顔界箓閼活垶鎮炴繝姘拺妞ゆ帊鐒﹂幆鍫㈢磼鏉堛劎绠橀柡渚囧枛閳规垿宕卞Ο纰辨喘濠碉紕鍋涢鍛偓娑掓櫊閹囧箹娴ｅ摜鐓戝┑鈽嗗灥濞咃絿鎹㈡笟鈧弻锟犲炊閵婏妇绋囨繝娈垮枤閸嬨倕鐣峰鈧獮鎺懳旀担鍝勭稐闂? % system_name, ["f_player"], "EVENT", 2)
-		"闁诲孩顔栭崰鎺楀磻閹剧粯鐓?, "闂備礁鎼Λ妤呭磹閻熼偊娓婚柛灞剧矋閸犲棝鏌涢弴銊ョ仧缂?, "闂佽绻愮换瀣濮樿泛缁?:
+				next_state = add_diplomatic_memory(next_state, "航路加固", "%s 的基础设施升级已完成，后续商路与补给线会更加稳固。" % system_name, ["f_player"], "EVENT", 2)
+		"保持观察", "趁乱进行高风险回收", "直接开发回收":
 			next_state = resolve_player_system_event(next_state, system_id)
-			if option_label == "闂備礁鎼Λ妤呭磹閻熼偊娓婚柛灞剧矋閸犲棝鏌涢弴銊ョ仧缂?:
+			if option_label == "趁乱进行高风险回收":
 				for system_index: int in range(next_state.get("starSystems", []).size()):
 					var system: Dictionary = next_state["starSystems"][system_index]
 					if system.get("id", "") != system_id:
@@ -1895,8 +2693,8 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 					system["eventResolved"] = true
 					next_state["starSystems"][system_index] = system
 					break
-				next_state = update_diplomatic_profile(next_state, "f_orchid", "neutral", -1, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦幑鍫曟煏婵炲灝鍔氱紒渚囧亰閺岋繝宕奸敐鍡愨偓鍐煠閸偄鐏撮柡灞芥噺瀵板嫮鈧綆浜舵禒鎾煟閻斿摜鎳冮悗姘卞鐎靛ジ鍩￠崨顔芥珫閻庡厜鍋撻柛鎰劤濞堫垶姊洪崫鍕仼濡ょ姵鎮傚畷锝夊箲閹扳晙姹楅梺瑙勫劤閸熷潡路閸涘瓨鐓涢柛銉戝懏鎲奸梺杞拌兌閸嬨倝寮荤仦绛嬪悑闁告洦鍘鹃鏃堟煟鎼淬垻鈯曢柨姘舵煟閵堝懎顏€规洘绻傞埥澶愬冀閵堝懍澹?)
-				next_state = add_diplomatic_memory(next_state, "闂備礁鎼Λ妤呭磹閹稿骸顕遍柍鍝勬噺閻撱儵鎮楅敐搴″箹妞?, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦伴悞璇差熆鐠轰警鍎忔い蹇嬪劤缁辨挻鎷呯憴鍕槬缂?%s 闂備焦鐪归崝宀€鈧矮鍗宠棢闁瑰墽绮埛鏃堟煃鏉炴壆鍔嶉柛鏇㈢畺閹粙顢涢妶鍫悈缂備浇椴哥换鍐嚗閸曨垰鍐€闁挎棁妫勯弨顓熺節濞堝灝鏋熼悗绗涘洤鐒垫い鎴ｆ硶閸斿秵绻涢懠鑸电《闁圭厧澧介埀顒婄秵閸樻儳鈻撻妶澶嬬厵闁告鍋熼弰鍌炴煃? % system_name, ["f_player", "f_orchid"], "EVENT", 1)
+				next_state = update_diplomatic_profile(next_state, "f_orchid", "neutral", -1, "玩家在风险条件下推进资源回收。")
+				next_state = add_diplomatic_memory(next_state, "高风险回收", "%s 在风暴扰动中完成了一次冒险回收，收益与风险并存。" % system_name, ["f_player", "f_orchid"], "EVENT", 1)
 	var follow_up: Dictionary = event_chain_follow_up(event_template_id, option_label)
 	if not follow_up.is_empty():
 		next_state = trigger_narrative_event(
@@ -1916,10 +2714,10 @@ static func resolve_narrative_event_choice(state: Dictionary, event_id: String, 
 			if int(event_item.get("chainStage", 1)) != int(follow_up.get("chainStage", 2)):
 				continue
 			event_item["followUpOptions"] = follow_up.get("options", [])
-			event_item["title"] = "%s-濠电偛鐡ㄧ划宀勵敄閸曨偀鏋庨柕蹇嬪€栭悡?s" % [str(event_item.get("title", "濠电偛鐡ㄧ划宀勵敄閸曨偀鏋?)), str(event_item.get("chainStage", 2))]
+			event_item["title"] = "%s-阶段%s" % [str(event_item.get("title", "叙事事件")), str(event_item.get("chainStage", 2))]
 			next_state["activeNarrativeEvents"][event_index] = event_item
 			break
-	next_state = add_message(next_state, "濠电偛鐡ㄧ划宀勵敄閸曨偀鏋庨柕蹇嬪€曠粻顔碱熆鐠轰警鍎忔い?, "%s 闂備焦鐪归崝宀€鈧凹浜為懞閬嶅Ω閿旂虎娴勯柣鐘叉惈閹碱偊宕甸幒妤佺厵缂佸顑欏Σ鎾煃?s闂備胶鍋ㄩ崕鑼崲閸岀倛鍥煛閸涱喖浠╅梺绯曞墲閸斿繘宕? % [system_name, option_label], "EVENT")
+	next_state = add_message(next_state, "事件决议", "%s 已执行选项：%s。" % [system_name, option_label], "EVENT")
 	return next_state
 
 static func advance_active_interventions(state: Dictionary) -> Dictionary:
@@ -1946,27 +2744,27 @@ static func active_narrative_events_for_player(state: Dictionary) -> Array:
 static func event_chain_follow_up(event_template_id: String, option_label: String) -> Dictionary:
 	match event_template_id:
 		"ANCIENT_RUINS_DISCOVERY":
-			if option_label == "闂佽崵濮撮鍛村疮椤栫偞鍋傞柨鐔哄У閻掑吋淇婇妶鍛仾濠?:
+			if option_label == "派工程队调查":
 				return {
 					"eventTemplateId": "ANCIENT_RUINS_DISCOVERY",
-					"narrative": "闂傚倷绶￠崜姘躲€冩径鎰婵°倐鍋撻懣鎰版煕濡ゅ啫鍓辨俊鏌ヤ憾閺屾稑鈻庤箛鏇烆暫闂佹悶鍊ら崣鍐箖閾忣偓绱ｅù锝呮惈閺呪晝绱撴担璇℃闁稿繑绋撻懞閬嶅煛閸愌勫媰闂佺鏈銊ノｉ弴銏″€堕煫鍥у缁佷即鏌涢埡浣盒ч柡浣哥Ф娴狅箓鎮欓顐畵閺屾稑顫濋幆褜娲梺瑙勬尦椤ユ挾妲愰幒妤婃晣闁绘棁娅ｉ悾鎶芥⒑缁嬭法绠為柛搴ょ簿閵囨劙宕掗悙鑼唺濠殿喗顨呴悧蹇涘触?,
-					"options": ["缂傚倷绀侀ˇ浼村垂閻㈠壊鏁嗛柣鏃傚劋閸犲棝鏌涚仦鍓с€掗柕?, "闂備焦鎮堕崕鎶藉磻閻愬搫鏋侀柛锔诲幘閻捇鏌熺€电浠滈摶?, "闂備礁鎲￠崝鏍矙閹邦喛濮抽柕濞у倻鍓ㄦ繛鎾村焹閸嬫捇鏌￠埀?],
+					"narrative": "初步勘探后，遗迹深层区显露出更多未解锁模块。你可以继续谨慎推进、建立研究站，或直接拆解核心构件。",
+					"options": ["派工程队稳定航道", "建立联合研究站", "直接开发回收"],
 					"chainStage": 2
 				}
 		"PIRATE_RAID":
-			if option_label == "婵犵數鍋涘璺虹暦濮椻偓瀹曡櫣浠︽慨鎰ㄥ亾閹烘宸濇い鎾跺剱濡?:
+			if option_label == "派舰队清剿":
 				return {
 					"eventTemplateId": "PIRATE_RAID",
-					"narrative": "婵犵數鍋為幐鎶剿夐幘瓒佸搫顓奸崱娆屾灃闁荤姴娲﹁ぐ鍐綖閺冨倵鍋撶憴鍕憙閻忓繑鐟ч崚鎺楀灳閺傘儲鏁犻梺鍛婂姀閺呮粌鈻撻悩缁樼叆婵炴垶锚椤ㄦ瑧绱掗幓鎺戔挃闁诡喕鍗虫俊鐤槾闁肩澧庣槐鎺楀箚瑜忔禒銏ゆ煙閸愬弶顥炴繛鐓庣箻閺屽懎鈽夊杈╁幊闂備礁鎼悧鍡浰囨导瀛樺仼妞ゆ劧绲炬刊瀛樼箾閸℃ê淇繛鐓庣秺閺岀喖鎮介崜鍙夋婵烇絽娲ら敃顏勭暦閿濆鍑犳い鎰枎娴?,
-					"options": ["闂備礁鎲″缁樻叏閺夋埈鍟呴梺顒€绉寸粻顕€鏌曢崼婵堝闁?, "闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇棄娈濆銈呯箰閻楀懏绔?, "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?],
+					"narrative": "清剿后仍有零散海盗潜伏在外围航道。你可以转入协商护航、继续强压，或改为加固基础设施。",
+					"options": ["与商路势力协商护航", "临时封闭跃迁节点", "投入资源加固航路"],
 					"chainStage": 2
 				}
 		"WARP_STORM":
-			if option_label == "缂傚倷绀侀ˇ浼村垂閻㈠壊鏁嗛柣鏃傚劋閸犲棝鏌涚仦鍓с€掗柕?:
+			if option_label == "派工程队稳定航道":
 				return {
 					"eventTemplateId": "WARP_STORM",
-					"narrative": "闂佽崵鍠愰悷銉╁磹閸︻厾鐭堥柟缁㈠枛閺嬩線鏌ｅΔ鈧悧鍡欑矈閿曞倹鐓欐繛鑼额嚙楠炴﹢鏌曢崶銊ь暡缂佸倸绉瑰畷鍗炍熼懡銈呭毐婵犵數鍎戠徊钘夌暦椤掑嫭鍎戝ù鐓庣摠閸庡秹鏌涢弴銊ュ闁哄鍊归幈銊ф喆閸曨偄顫嶆繝銏㈡嚀閻楁挸鐣峰┑瀣р偓锕傚箳閺冨偆妲烽梻浣告惈鐎氱兘宕规导鏉戠畾濞达綀娅ｇ壕鑲╂喐韫囨稒鍋ㄧ紓浣姑欢鐐烘煕閺囥劌骞楅柛濠勫仧閳ь剚顔栭崰鏍磹閹间焦鍋夐柛顐ｆ礃閸ゅ銇勮箛鎾跺濠㈣娲熼弻?,
-					"options": ["闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇棄娈濆銈呯箰閻楀懏绔?, "闂備礁鎲￠崝鏍暜閳ユ枼鏋嶉柟鎯у閻岸鏌ら幇浣哥仯濡?, "闂佽崵濮撮鍛村疮椤栫偞鍋傞柨鐔哄У閻掑吋淇婇妶鍛仾濠?],
+					"narrative": "主风暴带已经偏移，但余波仍在扰动局部航线。你可以继续封闭节点、进行高风险回收，或转回常规工程调查。",
+					"options": ["临时封闭跃迁节点", "趁乱进行高风险回收", "派工程队调查"],
 					"chainStage": 2
 				}
 	return {}
@@ -1983,12 +2781,12 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 	if target_type == "FLEET":
 		defender_index = find_fleet_index(next_state, target_id)
 		if defender_index == -1:
-			return add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ュ┑鐘灪閸庤偐鍒掗崜褎鍠?, "闂備礁鎼悧婊勭濠靛洨鐝舵慨妞诲亾鐎规洘宀搁獮宥夘敊閻ｅ瞼宕堕梻浣告惈缁夋潙煤閳哄懎鏄ョ€光偓閸曨兘鎸€闂佺粯姊荤悰銉╁磻?, "SYSTEM")
+			return add_message(next_state, "战斗发起失败", "未找到目标舰队，无法发起交战。", "SYSTEM")
 		defender = next_state["fleets"][defender_index]
 	else:
-		return add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ュ┑鐘灪閸庤偐鍒掗崜褎鍠?, "闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯肩帛閸嬪鏌涢銈呮瀾闁瑰嘲宕湁闁绘ê寮堕崳娲煛娓氬洤娅嶆鐐村姈閹峰懘鎸婃径灞藉笓闂傚倸鍊搁崯浼村窗閹捐秮鐑樺閺夋垵鍞ㄩ梺鎼炲劘閸庮噣宕?, "SYSTEM")
+		return add_message(next_state, "战斗发起失败", "当前仅支持对舰队目标发起交战。", "SYSTEM")
 	if defender.get("ownerId", "") == attacker_owner:
-		return add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ュ┑鐘灪閸庤偐鍒掗崜褎鍠?, "闂備礁鎼崯鐗堟叏閻㈠灚鍏滈柛鎾茶閸嬫捇鎮介崹顐㈡畬缂備浇顔婄欢姘嚕椤掑倹鍏滈柛娑卞幘閸樻帡姊婚崒姘殶闁哥姴姘﹂妵鎰板磼濠婂嫬鐨梻浣哥仢椤戝懘鎮樺☉銏＄厸闁稿本绋忔禒鐘绘煃?, "SYSTEM")
+		return add_message(next_state, "战斗发起失败", "不能攻击己方舰队。", "SYSTEM")
 	if not has_treaty(next_state, attacker_owner, defender.get("ownerId", ""), "WAR_STATE"):
 		next_state = declare_war_on_faction(next_state, attacker_owner, defender.get("ownerId", ""))
 		attacker_index = find_fleet_index(next_state, attacker_fleet_id)
@@ -1997,7 +2795,11 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 		defender = next_state["fleets"][defender_index]
 	var attacker_modifier: float = 1.0
 	var defender_modifier: float = 1.0
-	var notes: Array = ["濠电偛鐡ㄩ崵搴ㄥ磹閺嶎厼鍨傛い鎺戝€归崰鍡涙煕閺囥劌浜滈柣? %s" % engagement_rules, "闂傚倸鍊搁崯鏉戭焽瑜旈幃? %s" % formation, "闂備胶鎳撻悺銊ㄦ懌濠电姭鍋撻柟鎯版绾偓? %s" % tactic_card]
+	var notes: Array = [
+		"交战规则：%s" % engagement_rules,
+		"阵型：%s" % formation,
+		"战术卡：%s" % tactic_card,
+	]
 	var attacker_damage_taken: int = 22
 	var defender_damage_taken: int = 14
 	var rounds: int = 3
@@ -2005,53 +2807,62 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 	var defense_power: int = system_defense_power(next_state, system_id, defender.get("ownerId", ""))
 	if engagement_rules == "HIT_AND_RUN":
 		attacker_modifier *= 0.88
-		notes.append("濠德板€曢崐褰掓晝閵忋倕鐒垫い鎺戝€搁弸鏃堟煟濞戞﹫韬€规洘鐟︾换婵嗩潩椤撗€鍋撻弽顬″綊鏁愰崨顓у妷濡炪倖甯楃划鎾澄涢崘顔碱潊闁宠棄妫楁慨锕傛⒑鐠囧弶绂嬮柛妯圭矙瀵煡濡烽埡鍌氫虎闂佹悶鍎甸ˉ鎾剁矆婢跺⊕褰掓晲閸涱噮妫涚紓浣虹帛瀹€鎼佸箖閹€鏋庨柟閭﹀幘閸戣姤绻濋姀锝呯厫缁炬澘绉归獮鎰枎閹惧鍔甸梺閫炲苯澧扮紒顔借壘鐓ゆい蹇撴嫅缁辩敻姊?)
+		notes.append("采取袭扰撤离策略，战斗更短促。")
 		attacker_damage_taken = 12
 		defender_damage_taken = 10
 	elif engagement_rules == "ALL_OUT":
 		attacker_modifier *= 1.08
-		notes.append("闂備胶顭堢换鍫ュ礉鐏炵偓鍙忛煫鍥ㄦ⒒椤╂煡鏌曢崼婵囶棞闁诲繑绋戦湁闁稿繗鍋愰。鏌ユ煛閸屾瑧鍔嶇€垫澘瀚ˇ鎶芥煕椤垵澧寸€殿喚顭堥…銊╁箛椤旂虎妲峰┑鐐舵彧缁茶棄螞濡ゅ懎绠栭柟鐐墯濞间即鏌曟径娑氱暠缂佽尙鎳撹灃闁稿本鎯幋锕€鍨傛い鎺戝缁犳煡鏌ｉ弮鍌澦夐柛?)
+		notes.append("双方进入全面交战状态。")
 		attacker_damage_taken = 28
 		defender_damage_taken = 18
 	elif engagement_rules == "DEFENSIVE":
 		attacker_modifier *= 0.96
-		notes.append("闂傚倸鍊搁崯顖濄亹閸愵亙鐒婇柤鎭掑劤椤╂煡鏌曢崼婵囶棞闁诲繑绋戦湁闁稿繑绁归鍫濆偍婵炴垶鐟ч埞宥嗙節闂堟稒顥犻柟鐣屽█閺屻倝骞栨笟鍥ㄦ缂傚倸绉撮澶愬极瀹ュ洣娌柟顖嗗棗鎮呴梺鍝勵槴閺呮粓鎯勯鐐茬劦妞ゆ帒鍊搁弸搴ㄦ倵绾懏鐝繛鐓庣箻瀹曟﹢鍩℃担鍝ョ潉闂?)
+		notes.append("攻击方保持谨慎推进。")
 		attacker_damage_taken = 10
 		defender_damage_taken = 8
 	if formation == "WEDGE":
 		attacker_modifier *= 1.12
-		notes.append("婵犲痉鏉库偓鏍蓟閵娾晜鍤嬪ù鐓庣摠閳锋捇鏌涢…鎴濅簼缂佺虎鍨跺娲敃閵忕姭鍋撻幖浣哥畺閹兼番鍊楅悿鈧銈嗗姧閼靛綊宕戦幘缁樺亜鐎瑰嫮澧楅惁鏍磽娴ｆ瓕瀚伴柣蹇旂箖閺呭爼鎮╅悽鍨紡闁荤喍闄嶉崐鎰板磻?)
+		notes.append("楔形突击提升了前线火力。")
 		defender_damage_taken += 6
 	elif formation == "SPHERE":
 		attacker_modifier *= 0.95
-		notes.append("闂備浇宕甸崑娑㈠疮椤愶附鍤嬪ù鐓庣摠閳锋捇鏌涢…鎴濅簼缂佺虎鍨崇槐鎺斺偓锝庝簻閺嗗崬霉閻樿櫕灏﹂柡浣哥Ф娴狅箓鎳栭埡鍏╂垿姊洪崨濞掝亪顢栭崨鏉戞槬婵°倕鎳忛悞濠氭煟閺傚灝妲绘い鏂匡躬瀵爼宕煎┑鍡樻闂佸憡鐟ラ崯瀛樹繆?)
+		notes.append("球形阵收缩了火力但降低了战损。")
 		attacker_damage_taken = max(6, attacker_damage_taken - 8)
 	elif formation == "LINE":
 		attacker_modifier *= 1.02
-		notes.append("婵犵妲呴崹鍏肩濠婂牆鍨傛い蹇撶墛閳锋捇鏌涢…鎴濅簼缂佺姵甯￠弻娑㈠箳閸℃ɑ鐝掔紓渚囩厛閸撴稓鍒掑▎鎾崇闁肩⒈鍓氬В搴ㄦ⒑鐠囧弶绂嬮柛瀣閹便劏绠涢弴鐔锋毇闂佺硶鍓濋悷锔惧娴煎瓨鐓?)
+		notes.append("线列阵保持了稳定输出。")
+	var attacker_ship_count: int = attacker.get("ships", []).size()
+	var corvette_count: int = ship_type_count(attacker, "CORVETTE")
+	var capital_ship_count: int = ship_type_count(attacker, "CRUISER") + ship_type_count(attacker, "BATTLESHIP")
+	var defender_fleet_modifier: float = 1.0
+	var defense_structure_modifier: float = 1.0
 	match tactic_card:
 		"SCORCHED_EARTH":
 			attacker_modifier *= 1.20
-			notes.append("闂備胶绮敮顏嗙不閹存繐鑰块柨鐔哄Т缂佲晠鎮归幁鎺戝闁硅姤绮庨埀顒侇問閸犳牠骞栭銈傚亾閸偆鍙€妤犵偐鍋撶紓鍌欑劍钃遍柡鍡曞嵆閺屻劌鈽夊Ο鑲╁姰闁诲孩鍝庨崹鍝勵嚗閸曨垰浼犻柛鏇ㄥ亞閹ジ姊洪崫鍕伀闁哥姵鎹囬弻鍫⑩偓鐢告櫜閻掑﹪鏌涢埄鍏╂垿宕抽鑺ュ弿闁挎繂瀚ˇ锕傛煕濞嗘挾鐣虹€规洜鍏橀獮蹇曚沪閻戔晛浜鹃柛鎰典簼婵ジ鏌ｉ幇闈涘闁绘挶鍨介弻?)
+			notes.append("焦土政策提供了 20% 攻击加成。")
 		"ORBITAL_BOMBARDMENT":
-			attacker_modifier *= 0.92
-			defense_power = int(round(defense_power * 0.5))
-			notes.append("闂佸搫顦遍崑鎴﹀礉閹寸偟顩查柣鎰靛墯婵粓鏌熷▓鍨灈濞寸媭鍠栭埥澶愬箻鐎涙ê闉嶉梺杞拌兌閸嬨倕鐣烽姀鈶╁亾閿濆簼绨婚柣鎾村灴濮婂宕橀埡浣虹シ闁诲繐绻嬬划娆撴偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣瑰缁嬫垶绺介弮鍌氱筏闁告挆鈧崑鎾绘偨濞堟寧鏁梺绯曟櫅閻倸顫忔總鍛婂亜闁告稑锕︾粊閿嬬箾鐎靛壊鍎犻柛濠冪墵瀵煡濡烽埡鍌氫虎闂佹悶鍎绘俊鍥偡閹剧粯鈷掗柛鏇ㄥ亞琚梺?)
+			defender_fleet_modifier *= 1.25
+			defense_structure_modifier *= 0.5
+			notes.append("轨道轰炸强化了对防御建筑的打击，并降低了对舰队的伤害。")
 		"WOLF_PACK":
-			attacker_modifier *= 1.0 + float(ship_type_count(attacker, "CORVETTE")) * 0.05
-			defender_modifier *= 0.9
-			notes.append("闂備胶绮悷銊╁磻閹版澘绀傞柕蹇嬪灮閻滆霉閿濆洨鎽傛繛鐓庣秺閺岀喓绱掑Ο鍝勵潓閻庤娲栭惌鍌炵嵁鎼淬劌围闁告侗鍙冮崬鍫曟⒑閻撳孩鍟炲鐟版瀹曟濮€閵忊€虫瀭闂佸憡娲﹂崹顖滅磽婢跺ň妲堥柟鐐▕椤庢鏌涢妸銉х鐎规洘绮撻幊鐘垫崉閸濆嫬绠ｉ梻浣告啞濮婂湱绮欒箛娑樼劦?)
+			if attacker_ship_count > 0:
+				var corvette_ratio: float = float(corvette_count) / float(attacker_ship_count)
+				var capital_ratio: float = float(capital_ship_count) / float(attacker_ship_count)
+				attacker_damage_taken = int(round(float(attacker_damage_taken) * (1.0 - 0.25 * corvette_ratio)))
+				attacker_modifier *= maxf(0.75, 1.0 - 0.25 * capital_ratio)
+			notes.append("狼群突袭提高了护卫舰闪避，并压低了主力舰命中。")
 		"JUMP_ASSAULT":
 			attacker_modifier *= 1.15
 			attacker_damage_taken += 6
-			notes.append("闂佽崵濮撮幖顐﹀疮瀹曞洨绱﹂柤娴嬫櫇閻滆霉閿濆浂鐒炬慨锝咃躬閺屾盯鏁傞崫鍕潎濡炪倐鏅濈划顖氼焽椤忓牜鏁婇柣鎾虫捣椤忕粯绻涢幋鐐村碍闁挎洏鍊濆畷锝堢疀濞戞瑧鍔搁梺闈浤涢崒婊咃紱闂備礁鎲″褰掑礃閼姐倖顫曟繝闈涙处婵挳鏌涢埄鍏╂垿鎯佽ぐ鎺撯拻闁搞儺浜滅槐锔剧磼椤帞绡€闁硅櫕鐩、鏃堝炊椤掑倸褰侀梻鍌氬€搁崯鏉戭焽瑜旈幃妤呮倻閽樺）?)
+			notes.append("跃迁突击在首轮制造了强冲击。")
 		"BATTLE_LINE":
-			attacker_modifier *= 1.0 + float(ship_type_count(attacker, "CRUISER") + ship_type_count(attacker, "BATTLESHIP")) * 0.04
-			notes.append("闂備胶鎳撻悺銊╂晪闂佸壊鐓堟禍鐐烘儉椤忓牆鍨傛い鏃囧亹缁犳帡姊洪崨濠勫闁绘姊婚埀顒勬涧閻倸鐣峰┑鍡忔婵犲﹤鍟伴崢鎺楁⒑瑜版帗娅滈柤鍐茬埣閹晫绱掑Ο鑽ょФ闂佽鍎抽崯鍨掓径鎰厪?)
+			if capital_ship_count > 0:
+				attacker_modifier *= 1.15
+			notes.append("战列线为巡洋舰与战列舰提供了 15% 火力加成。")
 	if defense_power > 0:
-		notes.append("闂佸搫顦遍崑鎴﹀礉閹寸偟顩插Δ锝呭暞閳锋捇鏌熺紒妯虹瑨闁轰焦鐗楅〃銉╂倷閹绘帗姣愰悷婊呭閹告娊鐛幘璇茬疀妞ゅ繐妫滅换鎴炵箾?%s 闂備胶绮崝鏇犵礊婵犲伣锝囨嫚瀹割喖娈梺鎸庣☉鐎氼亞妲愰幋锔界厱闁哄啠鍋撶紒瀣箻閸┾偓? % str(defense_power))
+		notes.append("目标星系提供了 %s 点防御火力。" % str(defense_power))
 	var attacker_power: float = fleet_power(attacker) * attacker_modifier
-	var defender_power: float = fleet_power(defender) * defender_modifier + float(defense_power)
+	var defender_power: float = fleet_power(defender) * defender_modifier * defender_fleet_modifier + float(defense_power) * defense_structure_modifier
 	for round_index: int in range(rounds):
 		var round_factor: float = 1.0
 		if tactic_card == "JUMP_ASSAULT":
@@ -2072,7 +2883,7 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 		if defender_retreat_id != "":
 			damaged_defender["systemId"] = defender_retreat_id
 			next_state["fleets"][defender_index] = damaged_defender
-			notes.append("闂備胶鎳撻悺銊┾€﹂崼銏″枂闁挎洖鍊稿Λ姗€鎮峰▎蹇擃伀闁哄棙鐟╅弻銈夊传閵夈儺鏆梺鐟版啞閻熴儵顢氶妷鈺佺劦?%s闂? % defender_retreat_id)
+			notes.append("防守方撤退至 %s。" % defender_retreat_id)
 		elif defender_index > attacker_index:
 			next_state["fleets"].remove_at(defender_index)
 		else:
@@ -2086,13 +2897,21 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 			system["visibilityLevel"] = "FULL"
 			if tactic_card == "SCORCHED_EARTH":
 				system["buildings"] = []
-				notes.append("闂備胶绮敮顏嗙不閹存繐鑰块柨鐔哄Т缂佲晠鎮归幁鎺戝闁硅姤绮撻弻鐔虹玻閺嵮冾伀婵℃彃鐗嗛湁婵犲﹤鍟ˉ鈩冦亜閺囩喎鍝虹€殿喕鍗抽幃銏犆洪鍕福闂備焦鐪归崝宀€鈧凹鍓欓敃銏⑩偓闈涙啞閸嬫﹢鏌曟繛鍨姢缂佹唻濡囩槐鎺戔槈濞嗗繒浠ч梺?)
+				notes.append("焦土打击摧毁了目标地表建筑。")
+			elif tactic_card == "ORBITAL_BOMBARDMENT":
+				var surviving_buildings: Array = []
+				for building: Dictionary in system.get("buildings", []):
+					if str(building.get("type", "")) == "DEFENSE_PLATFORM":
+						continue
+					surviving_buildings.append(building)
+				system["buildings"] = surviving_buildings
+				notes.append("轨道轰炸摧毁了目标星系的防御平台。")
 			next_state["starSystems"][system_index] = system
 			break
 		if engagement_rules == "HIT_AND_RUN":
-			next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣告贡閻熸娊宕遍埡鍌涙澑", "%s 闂備胶鎳撻悺銊╁礉閺囩喐鍙忔繛鎴炲焹閸嬫捇鎮烽悧鍫熸嫳闂佹悶鍔嶅銊у垝閿濆棙濯寸紒娑橆儐閻掞箑螖閻橀潧浠滈柣鏍с偢瀹曟娊骞栨担鍝ヮ槴濠电偞鍨剁喊宥囩玻濡ゅ懏鐓涚€广儱鎳忕粊顐ょ磼鏉堛劎绠栭柟宄版嚇瀹曞崬螣鐠囪尙澶勯梻浣哄帶閻ゅ洤螞閸曨垱鍋╂い鎺戝缁€鍌炴煏婵犲繒鐣卞璺虹Ф缁辨帡鎮╅銏犫拤闂佸壊鐓堥崜鐔风暦閻樿绠掗柟鍝勬娴? % attacker.get("name", ""), "COMBAT")
+			next_state = add_message(next_state, "袭扰得手", "%s 在短促交火后压制敌军并成功脱离。" % attacker.get("name", "舰队"), "COMBAT")
 		else:
-			next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣告贡閻熸娊宕遍埡鍌涙澑", "%s 闂備礁鎲￠崹鍦垝椤栨粏濮虫繝闈涙川椤╂煡鏌涢埄鍐噭缂佹劖顨婇弻鈥愁吋閸涱喚鈹涢梺绯曟櫅閻倸顫忔總鍛婂亜闁汇値鍨伴悵顖涚節閵忥絾纭鹃柟纰卞亯閵囨劙宕堕鈧粻锝嗕繆椤栨碍鎯堥梻鍛耿閺岀喓鎸╂径濠傛殭闁绘挻鍨块弻鈩冨緞婵犲倹娈ч梺? % attacker.get("name", ""), "COMBAT")
+			next_state = add_message(next_state, "战斗胜利", "%s 击溃了目标舰队并夺取了战场主动权。" % attacker.get("name", "舰队"), "COMBAT")
 		for index: int in range(next_state.get("relationships", []).size()):
 			var relation: Dictionary = next_state["relationships"][index]
 			var touches: bool = (relation.get("factionAId", "") == attacker_owner and relation.get("factionBId", "") == defender.get("ownerId", "")) or (relation.get("factionAId", "") == defender.get("ownerId", "") and relation.get("factionBId", "") == attacker_owner)
@@ -2103,14 +2922,14 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 			relation["memoryImpact"] = int(relation.get("memoryImpact", 0)) + 10
 			relation["level"] = relation_level(int(relation.get("trust", 0)))
 			next_state["relationships"][index] = relation
-		next_state = update_diplomatic_profile(next_state, defender.get("ownerId", ""), "hostile", -6, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦幑鍫曟煏婵炲灝濡跨紒鐙€鍣ｉ弻锟犲醇閵忕姵鐎哄┑顔斤公缁犳捇鐛€ｎ€喓娑甸崨顓炵畱闂備礁鎲￠悷锕傛偋閺囩姵顐介弶鍫涘妿閳绘棃鎮归崶銊ョ祷鐞氱喖姊洪幐搴ｂ槈闁兼椿鍨抽幑銏ゅ焵椤掆偓椤啴濡堕崪浣哄悑闂侀潻绲鹃幃鍌氼嚕椤掑嫬绠€光偓閳ь剙危閹存緷褰掑礂閸忚偐鍑￠梺鍛婄懇缁犳牕鐣峰Ο琛℃婵°倕鍟板▓銈嗙節閻㈤潧浠掗柣鎺炵畵瀹曘垽顢楅崟顐?)
-		next_state = add_diplomatic_memory(next_state, "闂佸搫顦悧蹇涘箠閹炬眹鈧倿濡搁埡浣侯吅濠碘槅鍨崇划顖炴倶瀹ュ拋鐔嗛悹鍝勬惈閼稿綊鏌?, "%s 闂備線娼荤拹鐔煎礉鐎ｎ剛绠?%s 闂備焦鐪归崝宀€鈧凹浜滈～婵嬫晝閸屾氨顓哄┑鈽嗗灣椤㈠﹪宕㈤鍕拺妞ゆ帒顦顔济瑰鎰ɑ鐎垫澘瀚板畷锟犳倷閼碱剙濮堕梻? % [defender.get("name", "闂備浇妗ㄧ粈渚€鎳熼鐐茬柈?), attacker.get("name", "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦伴崵瀣归悡搴ｆ憼鐞?)], [attacker_owner, defender.get("ownerId", "")], "WAR", 3)
+		next_state = update_diplomatic_profile(next_state, defender.get("ownerId", ""), "hostile", -6, "我方舰队在战斗中失利。")
+		next_state = add_diplomatic_memory(next_state, "舰队会战", "%s 在与 %s 的交战中取得胜利。" % [attacker.get("name", "舰队"), defender.get("name", "敌方舰队")], [attacker_owner, defender.get("ownerId", "")], "WAR", 3)
 	else:
 		next_state["fleets"][defender_index] = damage_fleet(defender, defender_damage_taken)
 		if engagement_rules == "DEFENSIVE" or engagement_rules == "HIT_AND_RUN":
 			next_state["fleets"][attacker_index] = damage_fleet(attacker, attacker_damage_taken)
-			next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣告贡閻熸娊宕遍埡鍌涙澑", "%s 闂備線娼荤拹鐔煎礉鐎ｎ剛绠斿鑸靛姇缁€鍡涙煃閸濆嫬鈧敻宕戦幘瀛樺缂佸绨卞Λ锔界箾閹寸偞灏い鎴濇嚇閹箖顢楅崟顐ゎ吅闂佸綊鍋婇崹鐗堟叏鎼达絿纾奸柛灞剧懅娑撹尙绱掓潏銊х疄鐎殿喚鏁婚、鏃堝炊瑜嶉獮瀣節閵忥絾纭鹃柟纰卞亯閵囨劙宕堕浣稿壆濡炪倖姊婚弲顐﹀垂婵傚憡鐓? % attacker.get("name", ""), "COMBAT")
-			next_state = update_diplomatic_profile(next_state, defender.get("ownerId", ""), "firm", 2, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦幑鍫曟煏婵犲繘妾ù鐘筹耿瀵爼鍩￠崒姘变化濠殿喗锕粻鎾荤嵁鐎ｎ€喓娑甸崨顓炵畱闂備礁鎼悧婊勭閿濆绀傛俊顖濆亹閻滆霉閿濆牊顏犲鐟板暣濮婂宕橀鐐垫闂佹悶鍊曢柊锝夊极瀹ュ洣娌柦妯侯槼椤斿绱撻崒娆戠К闁告侗鍨遍弳鐗堢箾閿濆懏澶勭紒璇插暟閳ь剙鐏氬褰掋€冮崶顬喖宕崟顓т紳濠电姵顔栭崰妤冣偓绗涘洤鐒垫い鎴濇健濡剧兘鏌?)
+			next_state = add_message(next_state, "战斗受挫", "%s 未能打开局面，双方在有限交战后脱离接触。" % attacker.get("name", "舰队"), "COMBAT")
+			next_state = update_diplomatic_profile(next_state, defender.get("ownerId", ""), "firm", 2, "我方成功抵御了敌军试探。")
 			for index: int in range(next_state.get("relationships", []).size()):
 				var relation: Dictionary = next_state["relationships"][index]
 				var touches: bool = (relation.get("factionAId", "") == attacker_owner and relation.get("factionBId", "") == defender.get("ownerId", "")) or (relation.get("factionAId", "") == defender.get("ownerId", "") and relation.get("factionBId", "") == attacker_owner)
@@ -2127,12 +2946,12 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 			if retreat_id != "":
 				damaged_attacker["systemId"] = retreat_id
 				next_state["fleets"][attacker_index] = damaged_attacker
-				next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣告贡閻熸娊宕遍埡鍌涙澑", "%s 闂備線娼荤拹鐔煎礉鐎ｎ亶娼╅柨鏇炲€哥粻锝嗕繆椤栨粠鏀伴柛姗嗗墮椤法鎹勯崫鍕煘闂佺硶鏅涚€氫即寮鍥︽勃闁告挆鍕唲闂備胶鍘ч幗婊勬櫠濡ゅ懎绠版繛鍡楁禋閸ゆ鏌?%s闂? % [attacker.get("name", ""), retreat_id], "COMBAT")
-				notes.append("闂備胶鎳撻悺銊┾€﹂崼銏″枂闁挎洖鍊稿Λ姗€鎮峰▎蹇擃伀闁哄棙鐟╅弻銈夊传閵夈儺鏆梺鐟版啞閻熴儵顢氶妷鈺佺劦?%s闂? % retreat_id)
+				next_state = add_message(next_state, "进攻失败", "%s 被迫撤退至 %s。" % [attacker.get("name", "舰队"), retreat_id], "COMBAT")
+				notes.append("进攻方撤退至 %s。" % retreat_id)
 			else:
 				next_state["fleets"].remove_at(attacker_index)
-				next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣告贡閻熸娊宕遍埡鍌涙澑", "%s 闂備線娼荤拹鐔煎礉鐎ｎ亶娼╅柨鏇炲€哥粻锝嗕繆椤栨粠鏀伴柛姗嗗墮椤法鎹勯崫鍕煘闂佺硶鏅涚€氫即寮鍛殕闁告劑鍔庨崢鎺楁⒒閸屾艾鏆熼柛鐘虫礋閿濈偤鏁傞懞銉ゆ唉濡炪倖鍔ч懙褰掑磻閹捐鐒垫い鎺戝缁€鍕煟閹寸伝顏堟倶濞戙垺鐓曢柨鏃€鍨濋懜顏堟煃? % attacker.get("name", ""), "COMBAT")
-			next_state = add_diplomatic_memory(next_state, "闂佸搫顦弲婊呯矙閹烘鏋佸Δ锝呭暙閻淇婇妶鍕槮闁?, "%s 闂備線娼荤拹鐔煎礉瀹€鍕垫晪?%s 闂備焦鐪归崝宀€鈧凹浜炵槐鐐哄籍閸繄顓哄┑鈽嗗灣椤㈠﹪宕㈤鈧…璺ㄦ崉閸濆嫯鍩為梺绯曟櫅鐎氱増淇? % [attacker.get("name", "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱顦伴崵瀣归悡搴ｆ憼鐞?), defender.get("name", "闂備浇妗ㄧ粈渚€鎳熼鐐茬柈?)], [attacker_owner, defender.get("ownerId", "")], "WAR", 3)
+				next_state = add_message(next_state, "舰队覆灭", "%s 在交战中损失殆尽。" % attacker.get("name", "舰队"), "COMBAT")
+			next_state = add_diplomatic_memory(next_state, "舰队会战", "%s 在与 %s 的交战中失利。" % [attacker.get("name", "舰队"), defender.get("name", "敌方舰队")], [attacker_owner, defender.get("ownerId", "")], "WAR", 3)
 			for index: int in range(next_state.get("relationships", []).size()):
 				var relation: Dictionary = next_state["relationships"][index]
 				var touches: bool = (relation.get("factionAId", "") == attacker_owner and relation.get("factionBId", "") == defender.get("ownerId", "")) or (relation.get("factionAId", "") == defender.get("ownerId", "") and relation.get("factionBId", "") == attacker_owner)
@@ -2143,8 +2962,9 @@ static func initiate_combat_protocol(state: Dictionary, attacker_fleet_id: Strin
 				relation["memoryImpact"] = int(relation.get("memoryImpact", 0)) + 8
 				relation["level"] = relation_level(int(relation.get("trust", 0)))
 				next_state["relationships"][index] = relation
-	next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌濠电姭鍋撻柛鎰ゴ閺嬫牠鏌曟繝搴ｅ帥闁?, " / ".join(notes), "COMBAT")
-	next_state = add_combat_report(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍х暦闄囩粻娑橆潩閻撳孩鏆ラ梻浣烘嚀閻°劏鎽繝?, attacker.get("name", "闂佸搫顦弲婊呯矙閹烘鏋佸Δ锝呭暞閸ゅ霉閻撳海鎽犵悮?), defender.get("name", "闂傚倸鍊搁崯顖濄亹閸愵亙鐒婂ù鐘差儐閸ゅ霉閻撳海鎽犵悮?), attacker_wins, casualties, kills, remaining_power, notes)
+	next_state = add_message(next_state, "战斗摘要", " / ".join(notes), "COMBAT")
+	next_state = add_combat_report(next_state, "舰队交战报告", attacker.get("name", "我方舰队"), defender.get("name", "敌方舰队"), attacker_wins, casualties, kills, remaining_power, notes)
+	next_state = refresh_player_visibility(next_state)
 	return assess_game_status(ensure_faction_controls(next_state))
 
 static func colonize_for_faction(state: Dictionary, faction_id: String, system_id: String, population: int, title: String, content: String) -> Dictionary:
@@ -2177,6 +2997,18 @@ static func colonize_for_faction(state: Dictionary, faction_id: String, system_i
 			next_state["starSystems"][system_index] = system
 	return add_message(next_state, title, content, "EVENT")
 
+static func consume_colonization_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	for fleet_index: int in range(next_state.get("fleets", []).size()):
+		var fleet: Dictionary = next_state["fleets"][fleet_index]
+		if fleet.get("id", "") != fleet_id:
+			continue
+		fleet["mission"] = "COLONIZING"
+		fleet["movementCooldown"] = maxi(1, int(fleet.get("movementCooldown", 0)))
+		next_state["fleets"][fleet_index] = fleet
+		break
+	return next_state
+
 static func start_colony_for_faction(state: Dictionary, faction_id: String, system_id: String, mode: String, title: String, content: String) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var mode_data: Dictionary = colony_mode_data(mode)
@@ -2204,7 +3036,7 @@ static func start_colony_for_faction(state: Dictionary, faction_id: String, syst
 		system["colonizationProgress"] = 0.0
 		system["colonizationTurnsRemaining"] = int(mode_data.get("turns", 3))
 		system["colonizationMode"] = mode
-		system["colonizationRisk"] = mode_data.get("risk", "濠?)
+		system["colonizationRisk"] = mode_data.get("risk", "MEDIUM")
 		system["stability"] = int(mode_data.get("initial_stability", 50))
 		system["supplyLevel"] = int(mode_data.get("initial_supply", 65))
 		system["migrationPull"] = int(system.get("habitability", 60)) + 6
@@ -2238,7 +3070,13 @@ static func progress_colonies(state: Dictionary) -> Dictionary:
 			system["stability"] = min(100, int(system.get("stability", 60)) + 12)
 			system["supplyLevel"] = min(100, int(system.get("supplyLevel", 70)) + 10)
 			next_state["starSystems"][system_index] = system
-			next_state = add_message(next_state, "婵犵數鍋涢悧濠囨偋濡ゅ懏鍎嶆い鏍仜閹瑰爼鏌ｅΔ鈧悧鍡涙倶閸ヮ剚鐓?, "%s 闁诲海鎳撻幉陇銇愰崘顔藉仼妞ゆ帒瀚粻锝夋煙闁箑澧い銈呮嚇閺屾稑鈹戦崟顐㈩瀳缂傚倸鍊归幐楣冨箯鐎ｎ喖绠婚柛娑卞灣椤︻噣姊洪悷鎵憼闁告梹甯為幏褰掓偄婵傚妗ㄩ梺鎸庣箓閹虫劗娑甸埀顒€鈹戦悙鑼闁绘顨婇幆鍐敍閻愬弶宓嶉梺鐓庡閸忔﹢宕? % system.get("name", ""), "EVENT")
+			for fleet_index: int in range(next_state.get("fleets", []).size()):
+				var fleet: Dictionary = next_state["fleets"][fleet_index]
+				if fleet.get("ownerId", "") == system.get("ownerId", "") and fleet.get("systemId", "") == system.get("id", "") and str(fleet.get("mission", "IDLE")) == "COLONIZING":
+					fleet["mission"] = "IDLE"
+					fleet["movementCooldown"] = 0
+					next_state["fleets"][fleet_index] = fleet
+			next_state = add_message(next_state, "殖民地建立", "%s 的前哨殖民阶段已经完成，殖民地正式转入稳定发展。" % system.get("name", ""), "EVENT")
 	return next_state
 
 static func apply_player_fleet_missions(state: Dictionary) -> Dictionary:
@@ -2255,6 +3093,8 @@ static func apply_player_fleet_missions(state: Dictionary) -> Dictionary:
 				fleet = candidate
 				break
 		if fleet.is_empty():
+			continue
+		if int(fleet.get("movementCooldown", 0)) > 0:
 			continue
 		var mission: String = str(fleet.get("mission", "IDLE"))
 		match mission:
@@ -2317,16 +3157,23 @@ static func move_fleet(state: Dictionary, fleet_id: String, target_system_id: St
 			break
 	if fleet_index == -1 or fleet.get("ownerId", "") != player.get("id", ""):
 		return next_state
+	if int(fleet.get("movementCooldown", 0)) > 0:
+		return add_message(next_state, "舰队仍在航行", "%s 仍处于航行冷却中，还需 %s 回合才能再次移动。" % [str(fleet.get("name", "舰队")), str(fleet.get("movementCooldown", 0))], "SYSTEM")
 	if not connected_to(next_state, fleet.get("systemId", "")).has(target_system_id):
 		return next_state
+	var source_system_id: String = str(fleet.get("systemId", ""))
 	var cost: int = 1
+	var bandwidth: int = 0
 	for lane: Dictionary in next_state.get("hyperlanes", []):
-		var direct: bool = lane.get("startSystemId", "") == fleet.get("systemId", "") and lane.get("endSystemId", "") == target_system_id
-		var reverse: bool = lane.get("endSystemId", "") == fleet.get("systemId", "") and lane.get("startSystemId", "") == target_system_id
+		var direct: bool = lane.get("startSystemId", "") == source_system_id and lane.get("endSystemId", "") == target_system_id
+		var reverse: bool = lane.get("endSystemId", "") == source_system_id and lane.get("startSystemId", "") == target_system_id
 		if direct or reverse:
 			cost = int(lane.get("traversalCost", 1))
+			bandwidth = int(lane.get("bandwidth", 0))
+	if bandwidth > 0 and fleet.get("ships", []).size() > bandwidth:
+		return add_message(next_state, "航道容量不足", "%s 当前舰船数为 %s，超过了这条航道的容量上限 %s。" % [str(fleet.get("name", "舰队")), str(fleet.get("ships", []).size()), str(bandwidth)], "SYSTEM")
 	if int(player.get("resources", {}).get("energy", 0)) < cost:
-		return add_message(next_state, "缂傚倷绀侀ˇ鎶筋敋瑜庨幈銊╁煛閸屾氨绐為柡澶婄墱閸嬪顤?, "闂備胶鍘ч悿鍥ㄦ叏閵堝洩濮虫い鏃傛櫕閳绘梻鈧箍鍎遍悧鍡涘窗閺囥垺鐓ユ繛鎴烆焽閻掔兘鏌涢埡浣虹劯婵﹤銈搁幃銏ゅ川婵犲繘鐛滄繝鐢靛仜椤︽澘煤濠靛牏鐭氭い鎺嶇劍娴溿倕霉閿濆浂鏆柛?, "SYSTEM")
+		return add_message(next_state, "能源不足", "当前能源储备不足以支付本次舰队移动的航行消耗。", "SYSTEM")
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
 		if faction.get("id", "") == player.get("id", ""):
@@ -2335,13 +3182,15 @@ static func move_fleet(state: Dictionary, fleet_id: String, target_system_id: St
 			faction["resources"] = resources
 			next_state["factions"][faction_index] = faction
 	fleet["systemId"] = target_system_id
+	fleet["movementCooldown"] = max(0, cost - 1)
+	fleet["lastTraversalCost"] = cost
 	next_state["fleets"][fleet_index] = fleet
 	for system_index: int in range(next_state["starSystems"].size()):
 		var system: Dictionary = next_state["starSystems"][system_index]
 		if system.get("id", "") == target_system_id:
 			system["visibilityLevel"] = "FULL"
 			next_state["starSystems"][system_index] = system
-	next_state = add_message(next_state, "闂備礁銈搁弲鏌ュ础閸愬弬锝夋晜閸撗呯厠闁荤姴娲﹁ぐ鍐杽", "%s 闁诲氦顫夐悺鏇犱焊椤忓棛鐭氭い鎺嶇劍娴溿倕霉閿濆牊顥夋繛鍫ョ畺閺岋綁鍩℃繝鍌涚亶闂佺粯鐗紞浣割嚕娴煎瓨鍋勬繛宸簻閸樻瑩姊? % fleet.get("name", ""), "EVENT")
+	next_state = add_message(next_state, "舰队已移动", "%s 已完成本次跃迁并抵达目标星系。" % fleet.get("name", ""), "EVENT")
 	next_state = resolve_player_system_event(next_state, target_system_id)
 	var enemy_fleet_index: int = -1
 	var enemy_fleet: Dictionary = {}
@@ -2363,10 +3212,11 @@ static func move_fleet(state: Dictionary, fleet_id: String, target_system_id: St
 					captured_system["ownerId"] = player.get("id", "")
 					captured_system["visibilityLevel"] = "FULL"
 					next_state["starSystems"][system_index] = captured_system
-			next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍嵁鎼淬劌唯闁靛绠戦弳?, "%s 闂備線娼荤拹鐔煎礉鎼粹埗鐑樺閺夋垵鍞ㄩ梺鎼炲劘閸斿秷顤傜紓鍌欑贰閸ㄧ敻顢氳瀹曠敻顢欓悙顒€顏搁梺闈涱檧闂勫嫬鈻嶉弴銏＄厱闁归偊鍘鹃埥澶愭煠閼姐倕鏋戠€垫澘瀚板畷顐﹀礋椤愩倖鍋ч梻浣侯攰閻洭宕橀妸褍骞€闂備礁鎼ˇ顖炲窗濞戞碍顫曟繝闈涱儐閸ゅ霉閻撳海鎽犵悮婵嬫⒑閸涘﹤鐏辨繛鍜冪秮閻涱噣宕堕妸褉鏋栭梺閫炲苯澧伴柍褜鍓濋～澶屽枈瀹ュ鍨傛い鎺戝缁犳煡鏌ｉ弮鍌澦夐柛? % moved_fleet.get("name", ""), "COMBAT")
+			next_state = add_message(next_state, "遭遇战胜利", "%s 在抵达后迅速击溃了驻守敌舰。" % moved_fleet.get("name", "舰队"), "COMBAT")
 		else:
 			next_state["fleets"].remove_at(fleet_index)
-			next_state = add_message(next_state, "闂備胶鎳撻悺銊ㄦ懌闂佸搫顑囬崰鏍嵁鎼淬劌唯闁靛绠戦弳?, "%s 闂備線娼荤拹鐔煎礉鎼粹埗鐑樺閺夋垵鍞ㄩ梺鎼炲劘閸斿秷顤傜紓鍌欑贰閸ㄧ敻顢欐繝鍕闁哄啫鐗嗙粻锝嗕繆椤栨稐鑸ù婊冦偢閺屾盯骞掗崱妯绘緭闂? % moved_fleet.get("name", ""), "COMBAT")
+			next_state = add_message(next_state, "遭遇战失利", "%s 在抵达后被敌方守军击溃。" % moved_fleet.get("name", "舰队"), "COMBAT")
+	next_state = refresh_player_visibility(next_state)
 	return assess_game_status(ensure_faction_controls(next_state))
 
 static func explore_system(state: Dictionary, fleet_id: String, system_id: String) -> Dictionary:
@@ -2393,23 +3243,53 @@ static func explore_system(state: Dictionary, fleet_id: String, system_id: Strin
 			if adjacent.get("id", "") == adjacent_id and adjacent.get("visibilityLevel", "") == "HIDDEN":
 				adjacent["visibilityLevel"] = "PARTIAL"
 				next_state["starSystems"][system_index] = adjacent
-	next_state = add_message(next_state, "闂備浇顫夋禍浠嬪垂婵犳艾纾奸柕濞р偓閸嬫捇鎮烽悧鍫熸嫳闂?, "%s 闁诲海鎳撻幉陇銇愰崘顔藉仼妞ゆ帒瀚粻锝夋煙闁箑澧婚柛銈囧█閺岋綁鍩℃繝鍌涚亶闂佺粯鐗紞浣割嚕娴煎瓨鍋勬繛宸簻閸樻瑩姊哄Ч鍥у閻庢凹鍓涢埀顒佽壘妤犳悂婀侀柣搴祷閸斿宕? % fleet.get("name", ""), "EVENT")
+	next_state = add_message(next_state, "完成探索", "%s 已完成对目标星系的侦察，周边情报同步更新。" % fleet.get("name", ""), "EVENT")
 	next_state = resolve_player_system_event(next_state, system_id)
+	next_state = refresh_player_visibility(next_state)
 	return assess_game_status(next_state)
+
+static func refresh_player_visibility(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var player_id: String = player_faction(next_state).get("id", "f_player")
+	var full_visible: Dictionary = {}
+	for system: Dictionary in next_state.get("starSystems", []):
+		if system.get("ownerId", null) == player_id:
+			full_visible[str(system.get("id", ""))] = true
+	for fleet: Dictionary in next_state.get("fleets", []):
+		if fleet.get("ownerId", "") == player_id:
+			full_visible[str(fleet.get("systemId", ""))] = true
+	var partial_visible: Dictionary = {}
+	for system_id: String in full_visible.keys():
+		for adjacent_id: String in connected_to(next_state, system_id):
+			if not full_visible.has(adjacent_id):
+				partial_visible[adjacent_id] = true
+	for index: int in range(next_state.get("starSystems", []).size()):
+		var system: Dictionary = next_state["starSystems"][index]
+		var system_id: String = str(system.get("id", ""))
+		if full_visible.has(system_id):
+			system["visibilityLevel"] = "FULL"
+		elif partial_visible.has(system_id):
+			system["visibilityLevel"] = "PARTIAL"
+		else:
+			system["visibilityLevel"] = "HIDDEN"
+		next_state["starSystems"][index] = system
+	return next_state
 
 static func colonize_system(state: Dictionary, fleet_id: String, system_id: String, mode: String = "STANDARD") -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var player: Dictionary = player_faction(next_state)
 	var preview: Dictionary = colonization_preview(next_state, fleet_id, system_id, mode)
 	if not preview.get("allowed", false):
-		return add_message(next_state, "婵犵數鍋涢悧濠囨偋濡ゅ懏鍎嶆い鏍ㄧ☉缁剁偤寮堕崼顐函鐞?, str(preview.get("reason", "闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯款嚙缁秹鏌ｅΟ铏癸紞闁靛棗锕ョ换娑㈠醇閻斿搫顫ч梺娲荤厛閸ㄨ埖淇?)), "SYSTEM")
+		return add_message(next_state, "殖民启动失败", str(preview.get("reason", "当前条件不满足殖民要求。")), "SYSTEM")
 	var system_name: String = system_id
 	for entry: Dictionary in next_state.get("starSystems", []):
 		if entry.get("id", "") == system_id:
 			system_name = entry.get("name", system_id)
 			break
 	var mode_name: String = colony_mode_data(mode).get("name", mode)
-	next_state = start_colony_for_faction(next_state, player.get("id", ""), system_id, mode, "婵犵數鍋涢悧濠囨偋濡ゅ懏鍎嶆い鏍ㄧ矋婵ジ鏌嶉妷銉ユ毐闁诲繐锕弻娑橆潩閻撳海浠╂繝?, "闁诲海鎳撻幉陇銇愰崘顕呮晪?%s 闂備礁鎲￠悷锕傚垂婵傜绠?s闂備焦瀵х粙鎴︽嚐椤栨稒娅犻柣妯款嚙娴肩娀鏌曟繛鍨姢缂佹唻绠撻幃瑙勬媴閻熸澘濮㈢紓浣介哺閸ㄥ爼骞堥妸褉鍋撻敐鍐ㄥΨ闁? % [system_name, mode_name])
+	next_state = start_colony_for_faction(next_state, player.get("id", ""), system_id, mode, "殖民前哨建立", "%s 已启动 %s 模式殖民，殖民船队正在建立前哨与基础补给网络。" % [system_name, mode_name])
+	next_state = consume_colonization_fleet(next_state, fleet_id)
+	next_state = refresh_player_visibility(next_state)
 	return assess_game_status(ensure_faction_controls(next_state))
 
 static func player_freeform_message(state: Dictionary, target_faction_id: String, message_text: String, visibility_level: String) -> Dictionary:
@@ -2432,21 +3312,21 @@ static func player_freeform_message(state: Dictionary, target_faction_id: String
 		relation["trust"] = trust
 		relation["level"] = relation_level(trust)
 		next_state["relationships"][index] = relation
-	var title: String = "????"
+	var title: String = "外交致函"
 	var content_type: String = "PROPOSAL"
 	match str(intent.get("type", "MESSAGE")):
 		"TREATY":
-			title = "??????"
+			title = "条约提案"
 			content_type = "PROPOSAL"
 		"WARNING":
-			title = "????"
+			title = "强硬警告"
 			content_type = "WARNING"
 		"TRADE":
-			title = "??????"
+			title = "贸易请求"
 			content_type = "PROPOSAL"
 	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", visibility_level, content_type, title, message_text.strip_edges(), true)
-	next_state = add_diplomatic_memory(next_state, title, "??? %s ??????????" % target.get("name", target_faction_id), [player.get("id", ""), target_faction_id], "PROPOSAL", 1)
-	next_state = update_diplomatic_profile(next_state, target_faction_id, tone, trust_delta, "????????????????")
+	next_state = add_diplomatic_memory(next_state, title, "玩家向 %s 发起了新的外交接触。" % target.get("name", target_faction_id), [player.get("id", ""), target_faction_id], "PROPOSAL", 1)
+	next_state = update_diplomatic_profile(next_state, target_faction_id, tone, trust_delta, "正在评估玩家最新的外交意图。")
 	if str(intent.get("type", "")) == "TREATY":
 		next_state = propose_treaty(next_state, target_faction_id, str(intent.get("treaty", "NON_AGGRESSION")))
 	return next_state
@@ -2467,40 +3347,162 @@ static func receive_ai_reply(state: Dictionary, sender_faction_id: String, title
 	next_state = update_diplomatic_profile(next_state, sender_faction_id, tone, trust_delta, "")
 	return next_state
 
+static func faction_behavior_bias_report(state: Dictionary, faction_id: String) -> Dictionary:
+	var faction: Dictionary = get_faction_by_id(state, faction_id)
+	var personality: Dictionary = faction.get("personality", {})
+	var aggression: float = float(personality.get("aggression", 5.0))
+	var paranoia: float = float(personality.get("paranoia", 5.0))
+	var greed: float = float(personality.get("greed", 5.0))
+	var loyalty: float = float(personality.get("loyalty", 5.0))
+	var rationality: float = float(personality.get("rationality", 5.0))
+	return {
+		"aggression": aggression,
+		"paranoia": paranoia,
+		"greed": greed,
+		"loyalty": loyalty,
+		"rationality": rationality,
+		"secret_contact_bias": aggression * 1.5 + paranoia * 6.0 + greed * 2.5,
+		"group_council_bias": rationality * 5.0 + loyalty * 4.0 + paranoia * 1.8,
+		"coercion_bias": aggression * 6.0 + paranoia * 2.5 - loyalty * 1.5,
+		"cooperation_bias": rationality * 4.0 + loyalty * 5.0 + greed * 2.0,
+		"expansion_bias": aggression * 4.0 + greed * 3.0 - paranoia * 1.5,
+	}
+
+static func _memory_pressure_for_pair(state: Dictionary, faction_a_id: String, faction_b_id: String) -> float:
+	var pressure: float = 0.0
+	for memory: Dictionary in state.get("recentInteractionMemory", []):
+		var participants: Array = memory.get("participants", [])
+		if not participants.has(faction_a_id) or not participants.has(faction_b_id):
+			continue
+		pressure += float(memory.get("importance", 1)) * absf(float(memory.get("emotionalImpact", 0.0)))
+	for memory: Dictionary in state.get("archivedInteractionMemory", []):
+		var archived_participants: Array = memory.get("participants", [])
+		if not archived_participants.has(faction_a_id) or not archived_participants.has(faction_b_id):
+			continue
+		var age_turns: int = maxi(0, int(state.get("turn", 1)) - int(memory.get("turn", 1)))
+		pressure += absf(float(memory.get("emotionalImpact", 0.0)) * pow(float(memory.get("decayFactor", 0.98)), age_turns))
+	return pressure
+
+static func _should_schedule_backchannel(turn: int, signature: String, threshold: int, cadence_floor: int = 2) -> bool:
+	if turn < cadence_floor:
+		return false
+	var roll: int = abs(signature.hash()) % 100
+	return roll < threshold
+
+static func schedule_secret_contact(state: Dictionary, sender_id: String, target_id: String) -> Dictionary:
+	var relation: Dictionary = relation_breakdown(state, sender_id, target_id)
+	var sender_bias: Dictionary = faction_behavior_bias_report(state, sender_id)
+	var memory_pressure: float = _memory_pressure_for_pair(state, sender_id, target_id)
+	var player: Dictionary = player_faction(state)
+	var player_power: int = int(player.get("militaryPower", 0))
+	var urgency_score: float = float(relation.get("fear", 0)) + float(relation.get("memoryImpact", 0)) + memory_pressure * 12.0 + float(player_power) * 0.08
+	var trigger_threshold: int = int(clamp(15.0 + float(sender_bias.get("secret_contact_bias", 0.0)) + urgency_score * 0.35, 20.0, 92.0))
+	var signature: String = "SECRET_CONTACT|%s|%s|%s" % [str(state.get("turn", 1)), sender_id, target_id]
+	if not _should_schedule_backchannel(int(state.get("turn", 1)), signature, trigger_threshold, 3):
+		return {}
+	return {
+		"mode": "SECRET_CONTACT",
+		"sender_id": sender_id,
+		"target_ids": [target_id],
+		"target_type": "SINGLE",
+		"visibility_level": "SECRET",
+		"content_type": "PROPOSAL",
+		"title": "秘密接触",
+		"content": "%s 正在与 %s 私下评估围绕玩家扩张的共同应对方案。" % [get_faction_by_id(state, sender_id).get("name", sender_id), get_faction_by_id(state, target_id).get("name", target_id)],
+		"memory_title": "秘密接触",
+		"memory_summary": "%s 与 %s 建立了未公开的协调接触。" % [get_faction_by_id(state, sender_id).get("name", sender_id), get_faction_by_id(state, target_id).get("name", target_id)],
+		"profile_hint": "正在通过非公开沟通协调区域应对。",
+		"trust_shift": 3,
+		"attachments": {
+			"agenda_type": "SECRET_CONTACT",
+			"priority": "HIGH" if urgency_score >= 40.0 else "MEDIUM",
+			"focus": ["player_pressure", "border_security", "mutual_positioning"],
+		},
+	}
+
+static func schedule_group_council(state: Dictionary, sender_id: String, target_ids: Array) -> Dictionary:
+	var sender_bias: Dictionary = faction_behavior_bias_report(state, sender_id)
+	var combined_pressure: float = 0.0
+	for target_id: Variant in target_ids:
+		combined_pressure += _memory_pressure_for_pair(state, sender_id, str(target_id))
+	combined_pressure += float(player_faction(state).get("militaryPower", 0)) * 0.05
+	var trigger_threshold: int = int(clamp(18.0 + float(sender_bias.get("group_council_bias", 0.0)) + combined_pressure * 0.4, 20.0, 94.0))
+	var signature: String = "GROUP_COUNCIL|%s|%s|%s" % [str(state.get("turn", 1)), sender_id, ",".join(target_ids)]
+	if not _should_schedule_backchannel(int(state.get("turn", 1)), signature, trigger_threshold, 4):
+		return {}
+	return {
+		"mode": "GROUP_COUNCIL",
+		"sender_id": sender_id,
+		"target_ids": target_ids,
+		"target_type": "GROUP",
+		"visibility_level": "ENCRYPTED",
+		"content_type": "NOTIFICATION",
+		"title": "加密群组会议",
+		"content": "%s 发起了一场围绕局势升级与区域秩序的加密群组会议。" % get_faction_by_id(state, sender_id).get("name", sender_id),
+		"memory_title": "加密群组会议",
+		"memory_summary": "%s 正在通过群组会议协调各方对当前局势的立场。" % get_faction_by_id(state, sender_id).get("name", sender_id),
+		"profile_hint": "倾向通过多边会议塑造区域共识。",
+		"trust_shift": 1,
+		"attachments": {
+			"agenda_type": "GROUP_COUNCIL",
+			"focus": ["regional_balance", "escalation_control", "joint_signal"],
+			"priority": "HIGH" if combined_pressure >= 18.0 else "MEDIUM",
+		},
+	}
+
+static func generate_backchannel_agenda(state: Dictionary) -> Array:
+	var agendas: Array = []
+	var secret_contact: Dictionary = schedule_secret_contact(state, "f_merchant", "f_orchid")
+	if not secret_contact.is_empty():
+		agendas.append(secret_contact)
+	var group_council: Dictionary = schedule_group_council(state, "f_orchid", ["f_player", "f_merchant"])
+	if not group_council.is_empty():
+		agendas.append(group_council)
+	return agendas
+
 static func simulate_ai_backchannel(state: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	var merchant: Dictionary = get_faction_by_id(next_state, "f_merchant")
 	var orchid: Dictionary = get_faction_by_id(next_state, "f_orchid")
 	if merchant.is_empty() or orchid.is_empty():
 		return next_state
-	var player: Dictionary = player_faction(next_state)
-	var player_power: int = int(player.get("militaryPower", 0))
-	if int(next_state.get("turn", 1)) % 3 == 0 and player_power >= 90:
-		var intercepted_secret: bool = should_intercept_message(next_state, "f_merchant", ["f_orchid"], "SECRET")
-		next_state = add_diplomatic_message(next_state, "f_merchant", ["f_orchid"], "SINGLE", "SECRET", "PROPOSAL", "????", "???????????????????????????", intercepted_secret)
-		if intercepted_secret:
-			next_state = add_diplomatic_memory(next_state, "??????", "???????????????????", ["f_merchant", "f_orchid"], "INTEL", 3)
-		next_state = update_diplomatic_profile(next_state, "f_merchant", "firm", 0, "????????????????")
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "neutral", 1, "??????????????????")
-		for index: int in range(next_state["relationships"].size()):
-			var relation: Dictionary = next_state["relationships"][index]
-			var touches: bool = (relation.get("factionAId", "") == "f_merchant" and relation.get("factionBId", "") == "f_orchid") or (relation.get("factionAId", "") == "f_orchid" and relation.get("factionBId", "") == "f_merchant")
-			if not touches:
-				continue
-			var trust: int = clamp(int(relation.get("trust", 0)) + 3, -100, 100)
-			relation["trust"] = trust
-			relation["level"] = relation_level(trust)
-			next_state["relationships"][index] = relation
-	if int(next_state.get("turn", 1)) % 4 == 0:
-		var intercepted_group: bool = should_intercept_message(next_state, "f_orchid", ["f_player", "f_merchant"], "ENCRYPTED")
-		next_state = add_diplomatic_message(next_state, "f_orchid", ["f_player", "f_merchant"], "GROUP", "ENCRYPTED", "NOTIFICATION", "??????", "????????????????????????????????", intercepted_group)
-		if intercepted_group:
-			next_state = add_diplomatic_memory(next_state, "??????", "??????????????????", ["f_orchid", "f_player", "f_merchant"], "INTEL", 3)
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "neutral", 0, "???????????????")
+	for agenda: Dictionary in generate_backchannel_agenda(next_state):
+		var sender_id: String = str(agenda.get("sender_id", ""))
+		var target_ids: Array = agenda.get("target_ids", [])
+		var visibility_level: String = str(agenda.get("visibility_level", "SECRET"))
+		var intercepted: bool = should_intercept_message(next_state, sender_id, target_ids, visibility_level)
+		next_state = add_diplomatic_message(
+			next_state,
+			sender_id,
+			target_ids,
+			str(agenda.get("target_type", "SINGLE")),
+			visibility_level,
+			str(agenda.get("content_type", "NOTIFICATION")),
+			str(agenda.get("title", "秘密交流")),
+			str(agenda.get("content", "")),
+			intercepted,
+			agenda.get("attachments", {}),
+			{"encryptionLevel": 85 if visibility_level == "ENCRYPTED" else 55, "expiresAfterTurns": 12}
+		)
+		if intercepted:
+			next_state = add_diplomatic_memory(next_state, "截获%s" % str(agenda.get("title", "通信")), str(agenda.get("memory_summary", "")), [sender_id] + target_ids, "INTEL", 3)
+		else:
+			next_state = add_diplomatic_memory(next_state, str(agenda.get("memory_title", "外交接触")), str(agenda.get("memory_summary", "")), [sender_id] + target_ids, str(agenda.get("mode", "BACKCHANNEL")), 2)
+		next_state = update_diplomatic_profile(next_state, sender_id, "firm" if str(agenda.get("mode", "")) == "SECRET_CONTACT" else "neutral", 0, str(agenda.get("profile_hint", "")))
+		for target_id: Variant in target_ids:
+			for index: int in range(next_state["relationships"].size()):
+				var relation: Dictionary = next_state["relationships"][index]
+				var touches: bool = (relation.get("factionAId", "") == sender_id and relation.get("factionBId", "") == str(target_id)) or (relation.get("factionAId", "") == str(target_id) and relation.get("factionBId", "") == sender_id)
+				if not touches:
+					continue
+				var trust: int = clamp(int(relation.get("trust", 0)) + int(agenda.get("trust_shift", 0)), -100, 100)
+				relation["trust"] = trust
+				relation["level"] = relation_level(trust)
+				next_state["relationships"][index] = relation
 	if int(next_state.get("turn", 1)) % 5 == 0:
-		next_state = add_diplomatic_message(next_state, "f_orchid", ["f_player", "f_merchant"], "BROADCAST", "PUBLIC", "NOTIFICATION", "??????", "????????????????????????????", true)
-		next_state = add_diplomatic_memory(next_state, "??????", "??????????????????", ["f_orchid", "f_player", "f_merchant"], "PUBLIC", 2)
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 1, "???????????????")
+		next_state = add_diplomatic_message(next_state, "f_orchid", ["f_player", "f_merchant"], "BROADCAST", "PUBLIC", "NOTIFICATION", "公开局势声明", "兰花共识向周边势力发布了一份公开局势声明。", true)
+		next_state = add_diplomatic_memory(next_state, "公开局势声明", "兰花共识正在尝试以公开姿态塑造周边外交氛围。", ["f_orchid", "f_player", "f_merchant"], "PUBLIC", 2)
+		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 1, "希望通过公开发言塑造更稳定的局势。")
 	return next_state
 
 static func simulate_ai_proposals(state: Dictionary) -> Dictionary:
@@ -2510,23 +3512,34 @@ static func simulate_ai_proposals(state: Dictionary) -> Dictionary:
 	var turn: int = int(next_state.get("turn", 1))
 	var orchid_trend: Dictionary = relationship_trend_report(next_state, "f_player", "f_orchid", 3)
 	var merchant_trend: Dictionary = relationship_trend_report(next_state, "f_player", "f_merchant", 3)
+	if has_treaty(next_state, "f_merchant", "f_player", "WAR_STATE") and turn % 4 == 0 and (int(merchant_relation.get("fear", 0)) >= 35 or int(merchant_relation.get("utility", 0)) >= 20):
+		next_state = create_pending_proposal(next_state, "f_merchant", "f_player", "PEACE_TALK", "停火谈判", "商路联盟提议临时停火，并讨论有限和平条款。")
+		next_state = update_diplomatic_profile(next_state, "f_merchant", "firm", 1, "战争成本正在上升，希望争取有限停火。")
+	if has_treaty(next_state, "f_orchid", "f_player", "WAR_STATE") and turn % 5 == 0 and int(orchid_relation.get("utility", 0)) >= 16:
+		next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "PEACE_TALK", "调停停火", "兰花共识提议结束敌对状态，并恢复和平对话。")
+		next_state = update_diplomatic_profile(next_state, "f_orchid", "firm", 1, "持续战争正在破坏区域稳定。")
 	if turn % 6 == 0 and int(orchid_relation.get("trust", 0)) + int(orchid_relation.get("utility", 0)) / 3 >= 15 and not has_treaty(next_state, "f_orchid", "f_player", "NON_AGGRESSION"):
-		next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "NON_AGGRESSION", "????????", "????????????????????????????")
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 2, "?????????????????")
+		next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "NON_AGGRESSION", "互不侵犯条约", "兰花共识希望签署互不侵犯条约，以稳定边境。")
+		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 2, "倾向于可预期且稳定的边境政策。")
 	elif turn % 8 == 0 and (int(orchid_relation.get("trust", 0)) >= 30 or bool(orchid_trend.get("trust_rising", false))) and int(orchid_relation.get("utility", 0)) >= 18 and has_research(next_state, "tech_diplomatic_protocols") and not has_treaty(next_state, "f_orchid", "f_player", "RESEARCH_ACCORD"):
-		next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "RESEARCH_ACCORD", "??????", "??????????????????????????????")
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 3, "??????????????")
+		next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "RESEARCH_ACCORD", "科研协定", "兰花共识提议围绕战略科技建立联合研究协定。")
+		next_state = update_diplomatic_profile(next_state, "f_orchid", "friendly", 3, "科研收益已经超过竞争损耗。")
 	if turn % 7 == 0 and (int(merchant_relation.get("trust", 0)) >= 25 or bool(merchant_trend.get("trust_rising", false))) and int(merchant_relation.get("utility", 0)) >= 18 and not has_treaty(next_state, "f_merchant", "f_player", "TRADE_PACT"):
-		next_state = create_pending_proposal(next_state, "f_merchant", "f_player", "TRADE_PACT", "??????", "??????????????????????????")
-		next_state = update_diplomatic_profile(next_state, "f_merchant", "friendly", 2, "????????????????????")
+		next_state = create_pending_proposal(next_state, "f_merchant", "f_player", "TRADE_PACT", "贸易协定", "商路联盟提议降低关税并开放新的贸易航路。")
+		next_state = update_diplomatic_profile(next_state, "f_merchant", "friendly", 2, "扩展贸易走廊是当前优先事项。")
 	elif turn % 5 == 0 and (int(merchant_relation.get("trust", 0)) <= -35 or int(merchant_relation.get("memoryImpact", 0)) >= 12 or bool(merchant_trend.get("pressure_rising", false))):
-		next_state = add_diplomatic_message(next_state, "f_merchant", ["f_player"], "SINGLE", "PUBLIC", "WARNING", "????", "????????????????????????????????", true)
-		next_state = add_diplomatic_memory(next_state, "????", "???????????????????", ["f_player", "f_merchant"], "WARNING", 2)
-		next_state = update_diplomatic_profile(next_state, "f_merchant", "hostile", -3, "??????????????")
+		next_state = add_diplomatic_message(next_state, "f_merchant", ["f_player"], "SINGLE", "PUBLIC", "WARNING", "市场警告", "商路联盟警告称，制裁与航路管制可能进一步升级。", true)
+		next_state = add_diplomatic_memory(next_state, "市场警告", "商路联盟发出了升级警告。", ["f_player", "f_merchant"], "WARNING", 2)
+		next_state = update_diplomatic_profile(next_state, "f_merchant", "hostile", -3, "对玩家施加的商业压力正在上升。")
+		if not has_treaty(next_state, "f_merchant", "f_player", "WAR_STATE") and int(merchant_relation.get("fear", 0)) + int(merchant_relation.get("utility", 0)) / 2 < 18:
+			next_state = create_pending_proposal(next_state, "f_merchant", "f_player", "ULTIMATUM", "最后通牒", "商路联盟要求你立即作出政策让步，否则将走向战争。", 2)
+			next_state = update_diplomatic_profile(next_state, "f_merchant", "hostile", -2, "高压态势下已发出最后通牒。")
 	elif turn % 6 == 0 and (int(orchid_relation.get("fear", 0)) >= 55 or bool(orchid_trend.get("pressure_rising", false))) and int(orchid_relation.get("trust", 0)) < 10:
-		next_state = add_diplomatic_message(next_state, "f_orchid", ["f_player"], "SINGLE", "PUBLIC", "WARNING", "????", "????????????????????????????", true)
-		next_state = add_diplomatic_memory(next_state, "闂佸搫顦悧蹇涘箠閹炬眹鈧倿濡搁妸褏鏉搁悷婊勫灥椤?, "闂備胶顭堢换鎴濐熆濡偐绱﹀Δ锝呭暙缁€鍌涖亜閹烘垵鈧悂顢欐繝鍥ㄧ厱闁靛／鍐冦儵鎮介婵囶仩闁逞屽墰椤㈠﹤鈻斿☉銏犵柈婵°倕鎳庣粈澶愭煕椤垵娅橀柡澶婎煼濮婂鍩€椤掑嫭鍤勬い鏍殔娴滈箖鎮橀悙鑸殿棄缂佸弶妞介弻娑㈠箣閻樻彃濡哄銈嗗笚缁矂顢氶敐鍫㈢杸婵鍘ф俊鎶芥⒑閸涘﹦鈽夋い顓炵墦閸┾偓?, ["f_player", "f_orchid"], "WARNING", 2)
-		next_state = update_diplomatic_profile(next_state, "f_orchid", "firm", -2, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱妫欐禍銈夋煙鐎电浠﹂柛鈺佸€块弻娑㈠箛椤撶姭妫╃紓浣靛妸閸斿秶鎹㈠☉娆愬闁荤喐婢樼粻鎴濃攽椤旂晫绠扮紒鑼舵閿曘垽顢旈崨顖楁灃婵犵數濮撮崐鍝ュ閹惰姤鐓ユ繛鎴烆焽閻掑憡绻涢幘鍐差暢闁硅尙澧楃粭鐔煎焵椤掑嫬鐒垫い鎺嶆娴溿垻绱掔拠鎻掓殭妞ゎ偁鍨介弫鎰板川椤栨粠鏀ㄦ繝鐢靛仦閹哥偓绻涢埀顒€霉濠婂啫鈷旈柟顔诲嵆婵℃悂濡搁敃鈧☉褔姊虹粙璺ㄧ闁哥喎娼″畷纭呯疀濞戞?)
+		next_state = add_diplomatic_message(next_state, "f_orchid", ["f_player"], "SINGLE", "PUBLIC", "WARNING", "安全警告", "兰花共识警告称，若继续挑衅，可能触发军事回应。", true)
+		next_state = add_diplomatic_memory(next_state, "安全警告", "兰花共识发出了高等级威慑警告。", ["f_player", "f_orchid"], "WARNING", 2)
+		next_state = update_diplomatic_profile(next_state, "f_orchid", "firm", -2, "安全压力正在逼近临界阈值。")
+		if not has_treaty(next_state, "f_orchid", "f_player", "WAR_STATE") and int(orchid_relation.get("fear", 0)) >= 65:
+			next_state = create_pending_proposal(next_state, "f_orchid", "f_player", "ULTIMATUM", "威慑通牒", "兰花共识要求你立即降级冲突，否则对抗将不可避免。", 2)
 	return next_state
 
 static func merchant_ai_turn(state: Dictionary, decision: Dictionary = {}) -> Dictionary:
@@ -2549,6 +3562,7 @@ static func merchant_ai_turn(state: Dictionary, decision: Dictionary = {}) -> Di
 	var relation_view: Dictionary = relation_breakdown(next_state, "f_player", "f_merchant")
 	var merchant_trend: Dictionary = relationship_trend_report(next_state, "f_player", "f_merchant", 4)
 	var merchant_posture: Dictionary = strategic_posture_report(next_state, "f_merchant")
+	var merchant_bias: Dictionary = faction_behavior_bias_report(next_state, "f_merchant")
 	var merchant_home: Dictionary = {}
 	for system: Dictionary in next_state.get("starSystems", []):
 		if system.get("ownerId", null) == "f_merchant":
@@ -2561,28 +3575,42 @@ static func merchant_ai_turn(state: Dictionary, decision: Dictionary = {}) -> Di
 		if merchant_build_priority != "":
 			var merchant_blueprint: Dictionary = find_building_blueprint(merchant_build_priority)
 			if not merchant_blueprint.is_empty() and can_afford(merchant_resources, merchant_blueprint.get("cost", {})):
-				next_state = queue_structure_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), merchant_blueprint, "闂佸摜鍠庡Λ婊兦庨幎鑺ュ殏闁哄啫鍊圭粈鍐偓瑙勬偠閸庢娊鍩?, "闂佸摜鍠庡Λ婊兦庨幎鑺ュ殏闁哄啫鍊圭粈鍐偓鍦焾瀵爼鎮ч幘顔肩妞ゆ棁鍋愮粔濂告煕閹惧磭啸缂佷緡鍋勯埞鍐箛椤忓棛鎲块梺鐟扮摠椤洭寮抽幇鐗堫梿闁逞屽墮鏁堥柛灞剧箘濞堝爼鏌℃担瑙勭稇缂傚倹鎸鹃幏瀣箲閹伴潧鎮侀梺鍛婂笚鐢洭鍩€?)
+				next_state = queue_structure_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), merchant_blueprint, "商路联盟安排建设", "商路联盟在本土星系追加了一项基础设施建设计划。")
+				merchant = get_faction_by_id(next_state, "f_merchant")
+				merchant_resources = merchant.get("resources", {})
 				has_shipyard = has_shipyard or merchant_build_priority == "SHIPYARD"
 		if has_shipyard:
 			var ship_type: String = "CRUISER" if int(next_state.get("turn", 1)) >= 14 else "DESTROYER" if int(next_state.get("turn", 1)) >= 10 else "CORVETTE"
-			var cost: Dictionary = ship_cost(ship_type, next_state, "f_merchant")
-			if can_afford(merchant_resources, cost):
-				next_state = queue_ship_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), ship_type, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵喗鈷戞い鎰╁€曢瀷闂?, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵亖鍋撻悷鐗堝暈鐟滄澘鍟撮幆鍐閿涘嫧鏋栭梺閫炲苯澧撮柟?)
+			if can_queue_ship_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), ship_type):
+				next_state = queue_ship_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), ship_type, "商路联盟扩编舰队", "商路联盟开始建造 ")
 	if not decision.is_empty():
 		var action: String = decision.get("action", "WAIT")
 		if action == "TRADE" and int(relation_view.get("trust", 0)) + int(relation_view.get("utility", 0)) / 2 >= 0:
-			next_state = add_message(next_state, "闂備礁鎽滈崰搴∥涘鍫熷剹闁绘劦鍓涢埞宥嗐亜閺冨倵鎷℃俊?, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愩劉妲堥柟鎹愵嚃閸ゆ瑥鈹戦瑙勬珚妤犵偞鎹囬獮鍥敆閳ь剙袙婢舵劖鐓欐い鎾寸矊閻忊晜銇勯敃鈧璺侯焽韫囨稒鍋￠梺顓ㄩ檮濞堁囨煟閻樺啿澹冮柛鈩冪懅椤撳ジ姊?, "DIPLOMATIC")
-		elif action == "DECLARE_WAR" and int(relation_view.get("fear", 0)) <= 60 and not merchant_posture.get("high_pressure", []).has("闂備胶顭堢换鎴濐熆濡偐绱﹀Δ锝呭暙缁€鍌涖亜閹烘垵鈧悂顢?):
+			next_state = add_message(next_state, "商路联盟发起贸易接触", "商路联盟希望与你重启资源交换，并测试新的通商配额。", "DIPLOMATIC")
+		elif action == "DECLARE_WAR" and int(relation_view.get("fear", 0)) <= 60 and not merchant_posture.get("high_pressure", []).has("兰花共识"):
 			next_state = declare_war_on_faction(next_state, "f_merchant", "f_player")
 		elif action == "EXPLORE" and not merchant_fleet.is_empty():
 			for fleet_index: int in range(next_state["fleets"].size()):
 				var fleet: Dictionary = next_state["fleets"][fleet_index]
 				if fleet.get("id", "") == merchant_fleet.get("id", ""):
-					fleet["systemId"] = decision.get("target", fleet.get("systemId", ""))
+					var destination_id: String = str(decision.get("target", fleet.get("systemId", "")))
+					if int(fleet.get("movementCooldown", 0)) <= 0 and connected_to(next_state, fleet.get("systemId", "")).has(destination_id):
+						var travel_cost: int = lane_traversal_cost(next_state, str(fleet.get("systemId", "")), destination_id)
+						fleet["systemId"] = destination_id
+						fleet["movementCooldown"] = max(0, travel_cost - 1)
+						fleet["lastTraversalCost"] = travel_cost
 					next_state["fleets"][fleet_index] = fleet
-			next_state = add_message(next_state, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵喗鍋ｉ悗锝庝簻閺嗘瑥鈹?, "闂佸搫顦悧蹇涖€佹繝鍥ㄧ叆闁靛牆顦粻顕€鏌曢崼婵堝闁绘帒顭峰濠氬礃椤忓嫭鐎婚梺?%s 闂佽崵濮撮幖顐﹀疮瀹曞洨绱﹀┑鍌滎焾杩? % decision.get("target", ""), "EVENT")
+			next_state = add_message(next_state, "商路联盟舰队调动", "商路联盟将舰队调往 %s 附近执行侦察与护航任务。" % decision.get("target", ""), "EVENT")
 		elif action == "BUILD":
-			next_state = add_message(next_state, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵喗鈷戞い鎰╁€曢瀷闂?, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵亖鍋撶憴鍕憙閻忓浚浜幆鍐偄閻撳孩鐎柣搴㈢⊕钃遍柟鐑戒憾閺屾盯濡疯娴犳粓鏌熼濂割€楁い鏇熺懃鐓ゆい蹇庣娴滈箖鏌ｅΟ纭咁劅闁告埃鍋撻梻浣告啞鐢鏁崶顒€鐒?, "EVENT")
+			var build_target: String = str(decision.get("target", ""))
+			if can_queue_ship_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), build_target):
+				next_state = queue_ship_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), build_target, "商路联盟执行建造决策", "商路联盟根据战略评估开始建造 ")
+			else:
+				var build_blueprint: Dictionary = find_building_blueprint(build_target)
+				if can_queue_structure_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), build_blueprint):
+					next_state = queue_structure_for_ai(next_state, "f_merchant", merchant_home.get("id", ""), build_blueprint, "商路联盟执行建造决策", "商路联盟根据战略评估安排新的基础设施。")
+				else:
+					next_state = add_message(next_state, "商路联盟建造决策未执行", "商路联盟的建造目标当前不满足资源、解锁或星系条件。", "EVENT")
 	elif not merchant_fleet.is_empty():
 		var neutral_target: Dictionary = {}
 		for connected_id: String in connected_to(next_state, merchant_fleet.get("systemId", "")):
@@ -2600,14 +3628,20 @@ static func merchant_ai_turn(state: Dictionary, decision: Dictionary = {}) -> Di
 			var previous_value: int = int(neutral_target.get("resources", {}).get("energy", 0)) * 3 + int(neutral_target.get("resources", {}).get("minerals", 0)) * 3 + int(neutral_target.get("resources", {}).get("industry", 0)) * 2 + int(neutral_target.get("resources", {}).get("food", 0))
 			if current_value > previous_value:
 				neutral_target = system
-		var should_expand: bool = int(relation_view.get("fear", 0)) >= 50 or int(relation_view.get("utility", 0)) >= 20 or int(relation_view.get("memoryImpact", 0)) >= 6 or bool(merchant_trend.get("pressure_rising", false))
+		var expansion_threshold: int = maxi(10, 28 - int(round(float(merchant_bias.get("expansion_bias", 0.0)) / 5.0)))
+		var should_expand: bool = int(relation_view.get("fear", 0)) >= 50 or int(relation_view.get("utility", 0)) >= expansion_threshold or int(relation_view.get("memoryImpact", 0)) >= 6 or bool(merchant_trend.get("pressure_rising", false))
 		if not neutral_target.is_empty() and should_expand:
 			for fleet_index: int in range(next_state["fleets"].size()):
 				var fleet: Dictionary = next_state["fleets"][fleet_index]
 				if fleet.get("id", "") == merchant_fleet.get("id", ""):
-					fleet["systemId"] = neutral_target.get("id", "")
+					var neutral_destination_id: String = str(neutral_target.get("id", ""))
+					if int(fleet.get("movementCooldown", 0)) <= 0 and connected_to(next_state, fleet.get("systemId", "")).has(neutral_destination_id):
+						var neutral_travel_cost: int = lane_traversal_cost(next_state, str(fleet.get("systemId", "")), neutral_destination_id)
+						fleet["systemId"] = neutral_destination_id
+						fleet["movementCooldown"] = max(0, neutral_travel_cost - 1)
+						fleet["lastTraversalCost"] = neutral_travel_cost
 					next_state["fleets"][fleet_index] = fleet
-			next_state = add_message(next_state, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵喗鍋ｉ悗锝庝簻閺嗘瑥鈹?, "闂佸搫顦悧蹇涖€佹繝鍥ㄧ叆闁靛牆顦粻顕€鏌曢崼婵堝闁绘帒顭峰濠氬礃椤忓嫭鐎婚梺?%s 闂佽崵濮撮幖顐﹀疮瀹曞洨绱﹀┑鍌滎焾杩? % neutral_target.get("name", ""), "EVENT")
+			next_state = add_message(next_state, "商路联盟前出侦察", "商路联盟舰队正在向 %s 推进，尝试抢占新的贸易节点。" % neutral_target.get("name", ""), "EVENT")
 	var updated_merchant_fleet: Dictionary = {}
 	for fleet: Dictionary in next_state.get("fleets", []):
 		if fleet.get("ownerId", "") == "f_merchant":
@@ -2620,15 +3654,50 @@ static func merchant_ai_turn(state: Dictionary, decision: Dictionary = {}) -> Di
 				occupied_system = system
 				break
 		if not occupied_system.is_empty() and occupied_system.get("ownerId", null) == null and int(next_state.get("turn", 1)) >= 4 and can_afford(merchant.get("resources", {}), colony_mode_data("RESOURCE_OUTPOST").get("cost", COLONY_COST)) and int(relation_view.get("fear", 0)) >= 18:
-			next_state = start_colony_for_faction(next_state, "f_merchant", occupied_system.get("id", ""), "RESOURCE_OUTPOST", "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愨晝绠鹃柛顐ゅ枔婢ь剟鏌?, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵亖鍋撻悷鐗堝暈鐟滄澘鍟敃?%s 闁诲海鍋ｉ崐娑樷枍閿濆鍋熸繛鎴欏灩缁€鍫⑩偓骞垮劚閻楀繒绮绘繝姘厱闁绘棃鏀遍ˉ鐘绘煟濠垫劕鐏﹀┑? % occupied_system.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т閸欏﹪鏌ｉ弮鈧浠嬪礂?))
-	if bool(merchant_trend.get("opportunity_rising", false)) and not has_treaty(next_state, "f_merchant", "f_player", "TRADE_PACT") and int(next_state.get("turn", 1)) % 4 == 0:
-		next_state = add_diplomatic_message(next_state, "f_merchant", ["f_player"], "SINGLE", "PUBLIC", "PROPOSAL", "闂備礁鎽滈崰搴∥涘鍫熷剹闁告挆鍕彴闂佸搫娲ㄩ崰搴ｆ導?, "闂備礁鎽滈崰搴∥涘鍏﹀酣骞庨懞銉ユ畯闂佸搫鍟崐鍦矆閸愵喗鍋ｅù锝夋涧閳ь剚鎸鹃幏褰掓偄閸涘﹦绉堕梺鑽ゅ枛閸嬪﹪寮抽弮鍫熷€堕柣鎰ㄦ櫅娴滈箖姊洪崨濠冪叆闁诲繑绻堝畷鐢割敇閵忊€充虎闂佸搫顦扮€笛囧磹閵堝悿褰掓晲閸℃瑧鐓傞梺缁樼◤閸庨潧鐣烽敐澶嬫櫜闊洦娲滈ˇ顕€姊洪崷顓烆暭閻庣瑳鍥х濞寸厧鐡ㄩ悡鍌溾偓骞垮劚濡瑩鎮￠埀顒勬煟閻樺弶鎼愰悗姘间邯瀹曪絾绻濋崘顏佹灃闁圭厧鐡ㄧ换鍕矙閹达附鐓熼柕濞垮劚椤忣剟姊虹憗銈呪偓婵嗩嚕娴兼潙绠荤€规洖娲﹀▓褔姊洪崷顓炲妺閻㈩垰娲崺鈧?, true)
-	if bool(merchant_trend.get("pressure_rising", false)) and int(next_state.get("turn", 1)) % 4 == 0:
-		next_state = update_diplomatic_profile(next_state, "f_merchant", "guarded", -1, "闂備胶绮竟鏇㈠疾濞戙埄鏁婄€广儱妫欐禍銈夋煙鐎电浠﹂柛鈺佸€块弻锝夊Ω閵夈儺浠奸梺鍝ュ枑椤ㄥ﹤顕ｉ妸鈺佸瀭妞ゆ柨銇欏Δ鍛厱婵﹩鍘奸悘锔姐亜閹烘挾鐭掔€规洜鍏樻俊鎼佹晝閳ь剝鈪靛┑掳鍊曢崐褰掆€﹂崼鐔侯浄闁割偁鍎查崕搴ㄦ煟閺冨倸鍔嬮柣锝呭船椤啰鈧綆浜崣鍕箾閸涱喗灏甸柟椋庡█瀹曠喖顢旈崟顐ｅ皨闂?)
+			next_state = start_colony_for_faction(next_state, "f_merchant", occupied_system.get("id", ""), "RESOURCE_OUTPOST", "商路联盟建立资源前哨", "商路联盟在 %s 投入殖民队伍，准备建立新的资源前哨。" % occupied_system.get("name", "未知星系"))
+	if (bool(merchant_trend.get("opportunity_rising", false)) or float(merchant_bias.get("cooperation_bias", 0.0)) >= 46.0) and not has_treaty(next_state, "f_merchant", "f_player", "TRADE_PACT") and int(next_state.get("turn", 1)) % 4 == 0:
+		next_state = add_diplomatic_message(next_state, "f_merchant", ["f_player"], "SINGLE", "PUBLIC", "PROPOSAL", "商路联盟建议重启通商", "商路联盟认为当前局势适合恢复更大规模的资源交换，希望与你讨论新的贸易协定。", true)
+	if (bool(merchant_trend.get("pressure_rising", false)) or float(merchant_bias.get("coercion_bias", 0.0)) >= 42.0) and int(next_state.get("turn", 1)) % 4 == 0:
+		next_state = update_diplomatic_profile(next_state, "f_merchant", "guarded", -1, "认为玩家的扩张压力正在上升，需要保持谨慎观察。")
 	return ensure_faction_controls(next_state)
 
-static func queue_structure_for_ai(state: Dictionary, owner_id: String, system_id: String, blueprint: Dictionary, message_title: String = "AI闁诲氦顫夐幃鍫曞磿閹惰棄鐓?, message_content: String = "AI 闂備礁鎲￠弻銊╂倶濠靛洦鍙忛煫鍥ㄦ惄閸ゆ洟鏌嶈閸撴岸骞堥妸褉鍋撻敐搴′簻闁抽攱鐗滈埀顒傚仯閸婃宕曢妶鍜冭€垮ù鍏兼綑閹瑰爼鏌ｉ弮鈧鍧楀疮鎼淬劍鐓涢柛灞惧嚬濞肩喖鏌?) -> Dictionary:
+static func can_queue_structure_for_ai(state: Dictionary, owner_id: String, system_id: String, blueprint: Dictionary) -> bool:
+	if blueprint.is_empty():
+		return false
+	var faction: Dictionary = get_faction_by_id(state, owner_id)
+	if faction.is_empty() or not can_afford(faction.get("resources", {}), blueprint.get("cost", {})):
+		return false
+	for system: Dictionary in state.get("starSystems", []):
+		if system.get("id", "") != system_id:
+			continue
+		if system.get("ownerId", null) != owner_id:
+			return false
+		if int(system.get("buildings", []).size()) + queued_building_count_for_system(state, system_id) >= int(system.get("buildingSlots", 0)):
+			return false
+		return not system_has_or_queued_building(state, system_id, blueprint.get("type", ""))
+	return false
+
+static func can_queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: String, ship_type: String) -> bool:
+	if not available_ship_types(state).has(ship_type):
+		return false
+	var faction: Dictionary = get_faction_by_id(state, owner_id)
+	if faction.is_empty() or not can_afford(faction.get("resources", {}), ship_cost(ship_type, state, owner_id)):
+		return false
+	for system: Dictionary in state.get("starSystems", []):
+		if system.get("id", "") != system_id:
+			continue
+		if system.get("ownerId", null) != owner_id:
+			return false
+		for building: Dictionary in system.get("buildings", []):
+			if building.get("type", "") == "SHIPYARD":
+				return true
+		return false
+	return false
+
+static func queue_structure_for_ai(state: Dictionary, owner_id: String, system_id: String, blueprint: Dictionary, message_title: String = "AI 安排建设", message_content: String = "AI 势力在其控制星系中安排了一项新的建筑建设。") -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
+	if not can_queue_structure_for_ai(next_state, owner_id, system_id, blueprint):
+		return next_state
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
 		if faction.get("id", "") == owner_id:
@@ -2636,7 +3705,7 @@ static func queue_structure_for_ai(state: Dictionary, owner_id: String, system_i
 			next_state["factions"][faction_index] = faction
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append({
-		"id": "queue_%s" % str(Time.get_ticks_msec()),
+		"id": make_state_id(next_state, "queue"),
 		"systemId": system_id,
 		"ownerId": owner_id,
 		"kind": "BUILDING",
@@ -2648,8 +3717,10 @@ static func queue_structure_for_ai(state: Dictionary, owner_id: String, system_i
 	next_state["constructionQueue"] = queue
 	return add_message(next_state, message_title, message_content, "EVENT")
 
-static func queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: String, ship_type: String, message_title: String = "AI闂傚倷绶￠崑鍡樻叏妤ｅ啫鏄?, message_prefix: String = "AI 闂備礁鎲￠弻銊╂倶濠靛洦鍙忛煫鍥ㄦ惄閸熷懘鏌熺紒妯虹婵炲牆鎼埥澶愬箻椤栨矮澹曢梻?) -> Dictionary:
+static func queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: String, ship_type: String, message_title: String = "AI 扩编舰队", message_prefix: String = "AI 势力开始建造 ") -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
+	if not can_queue_ship_for_ai(next_state, owner_id, system_id, ship_type):
+		return next_state
 	var cost: Dictionary = ship_cost(ship_type, next_state, owner_id)
 	for faction_index: int in range(next_state["factions"].size()):
 		var faction: Dictionary = next_state["factions"][faction_index]
@@ -2658,7 +3729,7 @@ static func queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: St
 			next_state["factions"][faction_index] = faction
 	var queue: Array = next_state.get("constructionQueue", [])
 	queue.append({
-		"id": "queue_%s" % str(Time.get_ticks_msec()),
+		"id": make_state_id(next_state, "queue"),
 		"systemId": system_id,
 		"ownerId": owner_id,
 		"kind": "SHIP",
@@ -2668,7 +3739,7 @@ static func queue_ship_for_ai(state: Dictionary, owner_id: String, system_id: St
 		"totalTurns": InitialData.ship_turns().get(ship_type, 1)
 	})
 	next_state["constructionQueue"] = queue
-	return add_message(next_state, message_title, "%s%s缂傚倸鍊搁崐褰掓偋閺囥垹鐭楅柛鈩冾殢閸ゅ牊绻涘顔荤按闁稿鎹囬幃鈺冪磼濡偞娲熼弻娑㈠箳閹惧彉绮婚梺? % [message_prefix, InitialData.ship_labels().get(ship_type, ship_type)], "EVENT")
+	return add_message(next_state, message_title, "%s%s。" % [message_prefix, InitialData.ship_labels().get(ship_type, ship_type)], "EVENT")
 
 static func choose_ai_building_priority(state: Dictionary, faction_id: String, home_system: Dictionary, profile: String) -> String:
 	if home_system.is_empty():
@@ -2719,6 +3790,7 @@ static func orchid_ai_turn(state: Dictionary) -> Dictionary:
 			orchid_fleet = fleet
 			break
 	var orchid_resources: Dictionary = orchid.get("resources", {})
+	var orchid_bias: Dictionary = faction_behavior_bias_report(next_state, "f_orchid")
 	if not orchid_home.is_empty():
 		var has_lab: bool = system_has_or_queued_building(next_state, orchid_home.get("id", ""), "RESEARCH_LAB")
 		var has_shipyard: bool = system_has_or_queued_building(next_state, orchid_home.get("id", ""), "SHIPYARD")
@@ -2726,19 +3798,20 @@ static func orchid_ai_turn(state: Dictionary) -> Dictionary:
 		if orchid_build_priority != "":
 			var orchid_blueprint: Dictionary = find_building_blueprint(orchid_build_priority)
 			if not orchid_blueprint.is_empty() and can_afford(orchid_resources, orchid_blueprint.get("cost", {})):
-				next_state = queue_structure_for_ai(next_state, "f_orchid", orchid_home.get("id", ""), orchid_blueprint, "闁稿繑婢樼缓楣冨礂椤掑倸顔婄€规悶鍎抽埢?, "闁稿繑婢樼缓楣冨礂椤掑倸顔婄€规瓕寮撶欢鐑藉箲椤曗偓濡茶顕ラ垾鑼憿缂佸鍨归悥鐑樺濡搫甯ョ紒鐙欏棛娈堕柡浣哥摠濠€浼村捶閻旈绱﹂悹浣峰嫎閳?)
+				next_state = queue_structure_for_ai(next_state, "f_orchid", orchid_home.get("id", ""), orchid_blueprint, "兰花共识安排建设", "兰花共识在核心星系追加了一项偏研究与防御取向的建设。")
+				orchid = get_faction_by_id(next_state, "f_orchid")
+				orchid_resources = orchid.get("resources", {})
 				has_lab = has_lab or orchid_build_priority == "RESEARCH_LAB"
 				has_shipyard = has_shipyard or orchid_build_priority == "SHIPYARD"
 		if has_shipyard:
 			var orchid_ship_type: String = "DESTROYER" if int(next_state.get("turn", 1)) >= 12 else "CORVETTE"
-			var orchid_ship_cost: Dictionary = ship_cost(orchid_ship_type, next_state, "f_orchid")
-			if can_afford(orchid_resources, orchid_ship_cost):
-				next_state = queue_ship_for_ai(next_state, "f_orchid", orchid_home.get("id", ""), orchid_ship_type, "闁稿繑婢樼缓楣冨礂椤掑倸顔婇柡浣割嚟缁?, "闁稿繑婢樼缓楣冨礂椤掑倸顔婄€瑰憡褰冮惃銏＄▔閳ь剟鎳?)
+			if can_queue_ship_for_ai(next_state, "f_orchid", orchid_home.get("id", ""), orchid_ship_type):
+				next_state = queue_ship_for_ai(next_state, "f_orchid", orchid_home.get("id", ""), orchid_ship_type, "兰花共识扩编舰队", "兰花共识开始建造 ")
 	if not orchid_fleet.is_empty():
 		var player_relation: Dictionary = relation_breakdown(next_state, "f_player", "f_orchid")
 		var merchant_relation: Dictionary = relation_breakdown(next_state, "f_merchant", "f_orchid")
 		var orchid_trend: Dictionary = relationship_trend_report(next_state, "f_player", "f_orchid", 4)
-		var seek_neutral: bool = (int(player_relation.get("fear", 0)) >= 50 or int(player_relation.get("trust", 0)) >= 0) and int(merchant_relation.get("trust", 0)) >= -10
+		var seek_neutral: bool = ((int(player_relation.get("fear", 0)) >= 50 or int(player_relation.get("trust", 0)) >= 0) and int(merchant_relation.get("trust", 0)) >= -10) or float(orchid_bias.get("cooperation_bias", 0.0)) >= 48.0
 		var preferred_target: Dictionary = {}
 		for connected_id: String in connected_to(next_state, orchid_fleet.get("systemId", "")):
 			var candidate: Dictionary = {}
@@ -2757,9 +3830,14 @@ static func orchid_ai_turn(state: Dictionary) -> Dictionary:
 			for fleet_index: int in range(next_state["fleets"].size()):
 				var fleet: Dictionary = next_state["fleets"][fleet_index]
 				if fleet.get("id", "") == orchid_fleet.get("id", ""):
-					fleet["systemId"] = preferred_target.get("id", "")
+					var preferred_destination_id: String = str(preferred_target.get("id", ""))
+					if int(fleet.get("movementCooldown", 0)) <= 0 and connected_to(next_state, fleet.get("systemId", "")).has(preferred_destination_id):
+						var preferred_travel_cost: int = lane_traversal_cost(next_state, str(fleet.get("systemId", "")), preferred_destination_id)
+						fleet["systemId"] = preferred_destination_id
+						fleet["movementCooldown"] = max(0, preferred_travel_cost - 1)
+						fleet["lastTraversalCost"] = preferred_travel_cost
 					next_state["fleets"][fleet_index] = fleet
-			next_state = add_message(next_state, "闂備胶顭堢换鎴濐熆濡偐绱﹀Δ锝呭暙缁€鍌涖亜閹烘垵鈧悂顢欐繝鍥ㄥ仯閻庯綆浜滈弳娆忊攽?, "闂備胶顭堢换鎴濐熆濡偐绱﹂柟顖嗗苯鏅犻梺璺ㄥ枔婵吀绨洪梻浣搞偢閺呮煡宕￠崘鍙傦綁鏁冮崒姘承?%s 闂佽崵濮撮鍛村疮椤愶絾鍙忛柍鍝勬噹杩? % preferred_target.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т閸欏﹪鏌ｉ弮鈧浠嬪礂?), "EVENT")
+			next_state = add_message(next_state, "兰花共识前出侦察", "兰花共识舰队正在向 %s 机动，以评估新的扩张机会。" % preferred_target.get("name", "未知星系"), "EVENT")
 		var occupied_system: Dictionary = {}
 		for system_entry: Dictionary in next_state.get("starSystems", []):
 			if system_entry.get("id", "") == orchid_fleet.get("systemId", ""):
@@ -2769,9 +3847,11 @@ static func orchid_ai_turn(state: Dictionary) -> Dictionary:
 			var mode: String = "STANDARD" if int(occupied_system.get("habitability", 0)) >= 70 else "RESOURCE_OUTPOST"
 			var mode_cost: Dictionary = colony_mode_data(mode).get("cost", COLONY_COST)
 			if can_afford(orchid.get("resources", {}), mode_cost):
-				next_state = start_colony_for_faction(next_state, "f_orchid", occupied_system.get("id", ""), mode, "闂備胶顭堢换鎴濐熆濡偐绱﹀Δ锝呭暙缁€鍌涖亜閹烘垵鈧悂顢欐繝鍐闁割偆鍠撴晶顒勬煟?, "闂備胶顭堢换鎴濐熆濡偐绱﹀Δ锝呭暙缁€鍌涖亜閹烘垵鈧悂顢欐繝鍕ㄥ亾閻熺増鍟炵憸鏉垮暙閿?%s 闁诲海鍋ｉ崐娑樷枍閿濆鍋熸繛鎴欏灩濡﹢鏌熷▓鍨灍闁伙綁浜跺鍫曞醇閵忊€虫畬濡炪倧绲婚崝鎴︾嵁閹达富鏁婇柟顖嗗倸瀵查梻? % occupied_system.get("name", "闂備礁鎼悧婊勭閻愮儤鍋傞柨鐔哄Т閸欏﹪鏌ｉ弮鈧浠嬪礂?))
+				next_state = start_colony_for_faction(next_state, "f_orchid", occupied_system.get("id", ""), mode, "兰花共识启动殖民计划", "兰花共识在 %s 启动了新的殖民行动。" % occupied_system.get("name", "未知星系"))
 		if bool(orchid_trend.get("opportunity_rising", false)) and int(next_state.get("turn", 1)) % 5 == 0:
-			next_state = update_diplomatic_profile(next_state, "f_orchid", "warm", 1, "???????????????????????????")
+			next_state = update_diplomatic_profile(next_state, "f_orchid", "warm", 1, "认为当前局势正在向有利于自身扩张的方向变化。")
+		elif float(orchid_bias.get("coercion_bias", 0.0)) >= 44.0 and int(player_relation.get("fear", 0)) >= 40:
+			next_state = update_diplomatic_profile(next_state, "f_orchid", "firm", -1, "在安全压力上升时准备采取更强硬的威慑立场。")
 	return next_state
 
 static func process_turn(state: Dictionary, merchant_decision: Dictionary = {}) -> Dictionary:
@@ -2784,20 +3864,27 @@ static func process_turn(state: Dictionary, merchant_decision: Dictionary = {}) 
 	next_state["technologies"] = research_data.get("technologies", next_state.get("technologies", []))
 	next_state["currentResearchId"] = research_data.get("currentResearchId", null)
 	next_state["researchProgress"] = research_data.get("researchProgress", 0.0)
+	if str(research_data.get("completedId", "")) != "":
+		next_state = add_researched_tech_to_faction(next_state, "f_player", str(research_data.get("completedId", "")))
 	next_state = apply_faction_economy(next_state)
 	next_state = progress_colonies(next_state)
 	next_state = expire_treaties(next_state)
 	next_state = expire_pending_proposals(next_state)
 	next_state = apply_passive_repairs(next_state)
+	next_state = progress_fleet_movement_cooldowns(next_state)
 	next_state = apply_player_fleet_missions(next_state)
+	next_state = refresh_player_visibility(next_state)
 	next_state = advance_construction_queue(next_state)
 	next_state = advance_active_interventions(next_state)
 	next_state = update_ascension_progress(next_state)
 	if research_data.get("completedName", null) != null:
-		next_state = add_message(next_state, "缂傚倷绀侀ˇ浼村垂閼稿吀绻嗙憸蹇涘焵椤掑倹鍤€闁哄牜鍓熷畷?, "%s 闂備焦妞块崰妤€顫忔繝姘厴闁圭儤鏌￠崑鎾绘偡閻楀牊鎷遍梺鎼炲妽瀹€鍛婁繆? % research_data.get("completedName", ""), "SYSTEM")
+		next_state = add_message(next_state, "研究完成", "%s 已完成研究并立即生效。" % research_data.get("completedName", ""), "SYSTEM")
 	next_state = merchant_ai_turn(next_state, merchant_decision)
 	next_state = orchid_ai_turn(next_state)
 	next_state = simulate_ai_backchannel(next_state)
 	next_state = simulate_ai_proposals(next_state)
 	next_state = append_relationship_snapshots(next_state)
+	next_state = update_ai_victory_focuses(next_state)
+	next_state = update_galactic_council(next_state)
+	next_state = apply_ai_victory_interference(next_state)
 	return assess_game_status(ensure_faction_controls(next_state))

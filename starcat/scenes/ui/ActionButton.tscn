@@ -1,0 +1,81 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="StyleBoxFlat" id="1"]
+bg_color = Color(0.16, 0.19, 0.29, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.384314, 0.470588, 0.721569, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="2"]
+bg_color = Color(0.2, 0.24, 0.36, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.556863, 0.65098, 0.964706, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="3"]
+bg_color = Color(0.34, 0.41, 0.63, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.784314, 0.831373, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="4"]
+bg_color = Color(0.1, 0.11, 0.15, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.27451, 0.313726, 0.419608, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[node name="ActionButton" type="Button"]
+custom_minimum_size = Vector2(110, 44)
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+text = "操作"
+text_overrun_behavior = 3
+autowrap_mode = 3
+focus_mode = 2
+theme_override_colors/font_color = Color(0.956863, 0.968627, 1, 1)
+theme_override_colors/font_disabled_color = Color(0.490196, 0.52549, 0.619608, 1)
+theme_override_styles/normal = SubResource("1")
+theme_override_styles/hover = SubResource("2")
+theme_override_styles/pressed = SubResource("3")
+theme_override_styles/focus = SubResource("2")
+theme_override_styles/disabled = SubResource("4")

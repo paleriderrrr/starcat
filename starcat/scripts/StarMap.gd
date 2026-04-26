@@ -6,6 +6,11 @@ const MIN_ZOOM: float = 9.0
 const MAX_ZOOM: float = 28.0
 const ZOOM_STEP: float = 1.4
 const PAN_SPEED: float = 0.018
+const KEYBOARD_PAN_SPEED: float = 11.5
+const CAMERA_HEIGHT_RATIO: float = 1.28
+const CAMERA_MIN_HEIGHT: float = 12.0
+const CAMERA_MAX_HEIGHT: float = 32.0
+const CAMERA_PITCH_DEGREES: float = -52.0
 
 @onready var systems_root: Node3D = $SystemsRoot
 @onready var lanes_root: Node3D = $LanesRoot
@@ -14,12 +19,16 @@ const PAN_SPEED: float = 0.018
 
 var _dragging: bool = false
 var _last_mouse_position: Vector2 = Vector2.ZERO
+var _camera_pan: Vector2 = Vector2.ZERO
 var _zoom_distance: float = 18.0
 
 func _ready() -> void:
 	GameState.labels_visibility_changed.connect(_on_labels_toggled)
 	GameState.selection_changed.connect(_on_selection_changed)
 	_zoom_distance = camera.position.z
+	_camera_pan = Vector2(camera.position.x, camera.position.z - _zoom_distance)
+	camera.rotation_degrees.x = CAMERA_PITCH_DEGREES
+	_apply_camera()
 	refresh()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -37,8 +46,24 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		var motion: InputEventMouseMotion = event
 		var delta: Vector2 = motion.position - _last_mouse_position
-		translate(Vector3(-delta.x * PAN_SPEED, 0.0, delta.y * PAN_SPEED))
+		_pan_map(Vector2(-delta.x * PAN_SPEED, delta.y * PAN_SPEED))
 		_last_mouse_position = motion.position
+
+func _process(delta: float) -> void:
+	if _has_text_input_focus():
+		return
+	var pan_input: Vector2 = Vector2.ZERO
+	if Input.is_action_pressed("map_pan_left"):
+		pan_input.x -= 1.0
+	if Input.is_action_pressed("map_pan_right"):
+		pan_input.x += 1.0
+	if Input.is_action_pressed("map_pan_up"):
+		pan_input.y -= 1.0
+	if Input.is_action_pressed("map_pan_down"):
+		pan_input.y += 1.0
+	if pan_input == Vector2.ZERO:
+		return
+	_pan_map(pan_input.normalized() * KEYBOARD_PAN_SPEED * delta)
 
 func refresh() -> void:
 	_clear_children(systems_root)
@@ -170,7 +195,20 @@ func _clear_children(root: Node) -> void:
 		child.queue_free()
 
 func _apply_camera() -> void:
-	camera.position = Vector3(camera.position.x, clamp(_zoom_distance * 0.9, 8.0, 24.0), _zoom_distance)
+	camera.rotation_degrees.x = CAMERA_PITCH_DEGREES
+	camera.position = Vector3(
+		_camera_pan.x,
+		clamp(_zoom_distance * CAMERA_HEIGHT_RATIO, CAMERA_MIN_HEIGHT, CAMERA_MAX_HEIGHT),
+		_camera_pan.y + _zoom_distance
+	)
+
+func _pan_map(delta: Vector2) -> void:
+	_camera_pan += delta
+	_apply_camera()
+
+func _has_text_input_focus() -> bool:
+	var focus_owner: Control = get_viewport().gui_get_focus_owner()
+	return focus_owner is LineEdit or focus_owner is TextEdit
 
 func _on_system_input(_camera: Node, event: InputEvent, _position: Vector3, _normal: Vector3, _shape_idx: int, system_id: String) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

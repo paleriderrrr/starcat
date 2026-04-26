@@ -49,6 +49,49 @@ func request_world_state(game_state: Dictionary, query_filter: String = "ALL") -
 	}
 	_post_json("world_state", "/api/world/state", payload)
 
+func request_fleet_move_validation(game_state: Dictionary, fleet_id: String, target_system_id: String) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"fleet_id": fleet_id,
+		"target_system_id": target_system_id
+	}
+	_post_json("fleet_move_validation", "/api/fleet/move", payload)
+
+func request_relationship_status(game_state: Dictionary, faction_a_id: String, faction_b_id: String) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"faction_a_id": faction_a_id,
+		"faction_b_id": faction_b_id
+	}
+	_post_json("relationship_status", "/api/diplomacy/relationship", payload)
+
+func request_proposal_evaluation(game_state: Dictionary, proposal_id: String, evaluator_faction_id: String) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"proposal_id": proposal_id,
+		"evaluator_faction_id": evaluator_faction_id
+	}
+	_post_json("proposal_evaluation", "/api/diplomacy/evaluate-proposal", payload)
+
+func request_diplomatic_action(game_state: Dictionary, source_faction_id: String, target_faction_id: String, action_type: String, action_payload: Dictionary = {}) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"source_faction_id": source_faction_id,
+		"target_faction_id": target_faction_id,
+		"action_type": action_type,
+		"payload": action_payload
+	}
+	_post_json("diplomatic_action", "/api/diplomacy/execute", payload)
+
+func request_construction_validation(game_state: Dictionary, system_id: String, target_id: String, kind: String) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"system_id": system_id,
+		"target_id": target_id,
+		"kind": kind
+	}
+	_post_json("construction_validation", "/api/construction/manage", payload)
+
 func request_ai_decision(game_state: Dictionary) -> void:
 	var player: Dictionary = GameLogic.player_faction(game_state)
 	var visible_neutral_systems: Array = []
@@ -128,7 +171,8 @@ func request_diplomatic_message(sender: Dictionary, target: Dictionary, relation
 		"recipient_name": target.get("name", ""),
 		"relationship_level": relationship_level,
 		"tone": tone,
-		"personality": sender.get("personality", {})
+		"personality": sender.get("personality", {}),
+		"game_state": GameState.game_state
 	}
 	_post_json("diplomatic_message", "/api/ai/diplomatic-message", payload)
 
@@ -142,7 +186,8 @@ func request_ai_conversation(sender: Dictionary, target: Dictionary, relationshi
 		"intent_type": intent_type,
 		"intent_detail": intent_detail,
 		"player_message": player_message,
-		"personality": target.get("personality", {})
+		"personality": target.get("personality", {}),
+		"game_state": GameState.game_state
 	}
 	_post_json("conversation", "/api/ai/conversation", payload)
 
@@ -183,6 +228,38 @@ func request_resource_status(game_state: Dictionary, faction_id: String, scope: 
 	}
 	_post_json("resource_status", "/api/resources/status", payload)
 
+func request_resource_policy(game_state: Dictionary, faction_id: String, policy_name: String, value: float, priority_focus: String = "BALANCED", scope: String = "GLOBAL", system_id: Variant = null) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"faction_id": faction_id,
+		"scope": scope,
+		"system_id": system_id,
+		"policy_name": policy_name,
+		"value": value,
+		"priority_focus": priority_focus
+	}
+	_post_json("resource_policy", "/api/resources/policy", payload)
+
+func request_research_priority(game_state: Dictionary, faction_id: String, tech_id: String, allocation: float = 1.0) -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"faction_id": faction_id,
+		"tech_id": tech_id,
+		"allocation": allocation
+	}
+	_post_json("research_priority", "/api/research/set-priority", payload)
+
+func request_ship_production(game_state: Dictionary, faction_id: String, system_id: String, ship_type: String, quantity: int = 1, priority: String = "NORMAL") -> void:
+	var payload: Dictionary = {
+		"game_state": game_state,
+		"faction_id": faction_id,
+		"system_id": system_id,
+		"ship_type": ship_type,
+		"quantity": quantity,
+		"priority": priority
+	}
+	_post_json("ship_production", "/api/production/order-ship", payload)
+
 func request_combat_protocol(game_state: Dictionary, fleet_id: String, target_type: String, target_id: String, engagement_rules: String = "ALL_OUT", formation: String = "LINE") -> void:
 	var payload: Dictionary = {
 		"game_state": game_state,
@@ -203,6 +280,16 @@ func request_director_intervention(game_state: Dictionary, intervention_type: St
 		"duration": duration
 	}
 	_post_json("director_intervention", "/api/director/intervention", payload)
+
+func request_narrative_generation(context: String, style: String = "FORMAL", recipient: String = "", content_type: String = "DECLARATION", game_state: Dictionary = {}) -> void:
+	var payload: Dictionary = {
+		"context": context,
+		"style": style,
+		"recipient": recipient if recipient != "" else null,
+		"content_type": content_type,
+		"game_state": game_state
+	}
+	_post_json("narrative_generation", "/api/director/generate-narrative", payload)
 
 func _post_json(route: String, path: String, payload: Dictionary) -> void:
 	_ensure_http()
@@ -226,6 +313,16 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			world_query_received.emit(payload)
 		"world_state":
 			world_query_received.emit({"world_state_report": payload})
+		"fleet_move_validation":
+			world_query_received.emit({"fleet_move_report": payload})
+		"relationship_status":
+			world_query_received.emit({"relationship_report": payload})
+		"proposal_evaluation":
+			world_query_received.emit({"proposal_evaluation_report": payload})
+		"diplomatic_action":
+			world_query_received.emit({"diplomatic_action_report": payload})
+		"construction_validation":
+			world_query_received.emit({"construction_validation_report": payload})
 		"ai_decide":
 			ai_decision_received.emit(payload)
 		"merchant_decide":
@@ -242,10 +339,18 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			world_query_received.emit({"director_event_report": payload})
 		"resource_status":
 			world_query_received.emit({"resource_status_report": payload})
+		"resource_policy":
+			world_query_received.emit({"resource_policy_report": payload})
+		"research_priority":
+			world_query_received.emit({"research_priority_report": payload})
+		"ship_production":
+			world_query_received.emit({"ship_production_report": payload})
 		"combat_protocol":
 			world_query_received.emit({"combat_protocol_report": payload})
 		"director_intervention":
 			world_query_received.emit({"director_intervention_report": payload})
+		"narrative_generation":
+			world_query_received.emit({"narrative_generation_report": payload})
 
 func _system_has_shipyard(system: Dictionary) -> bool:
 	for building: Dictionary in system.get("buildings", []):

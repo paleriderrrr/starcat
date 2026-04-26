@@ -1,0 +1,69 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxFlat" id="1"]
+bg_color = Color(0.09, 0.1, 0.15, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.254902, 0.360784, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+
+[node name="PostureCard" type="PanelContainer"]
+theme_override_styles/panel = SubResource("1")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
+theme_override_font_sizes/font_size = 18
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "战略态势"
+
+[node name="HighPressure" type="Label" parent="Content"]
+layout_mode = 2
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "高压对象"
+
+[node name="HighOpportunity" type="Label" parent="Content"]
+layout_mode = 2
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "高机会对象"
+
+[node name="Deteriorating" type="Label" parent="Content"]
+layout_mode = 2
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "关系恶化对象"
+
+[node name="Improving" type="Label" parent="Content"]
+layout_mode = 2
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "关系改善对象"
+
+[node name="Flashpoints" type="Label" parent="Content"]
+layout_mode = 2
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "潜在爆点"
+
+[node name="Posture" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
+autowrap_mode = 3
+text_overrun_behavior = 3
+text = "建议姿态"

@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/ui/ActionButton.tscn" id="1_button"]
+
+[node name="DiplomacyComposer" type="VBoxContainer"]
+theme_override_constants/separation = 8
+
+[node name="DraftBox" type="TextEdit" parent="."]
+custom_minimum_size = Vector2(0, 140)
+size_flags_vertical = 3
+placeholder_text = "输入要发送给该势力的结构化外交文本。建议写明目标、条件、交换内容与态度，让 AI 更容易解析和回应。"
+
+[node name="Controls" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="VisibilitySelector" type="OptionButton" parent="Controls"]
+custom_minimum_size = Vector2(144, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+
+[node name="SendButton" parent="Controls" instance=ExtResource("1_button")]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "发送消息"

@@ -1,0 +1,43 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxFlat" id="1"]
+bg_color = Color(0.09, 0.1, 0.15, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.254902, 0.360784, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+
+[node name="ApiReportCard" type="PanelContainer"]
+theme_override_styles/panel = SubResource("1")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "API 报告"
+autowrap_mode = 3
+text_overrun_behavior = 3
+
+[node name="Summary" type="RichTextLabel" parent="Content"]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "摘要"
+
+[node name="Details" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 2
