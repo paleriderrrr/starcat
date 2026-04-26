@@ -121,7 +121,7 @@ func _ready() -> void:
 	GameState.selection_changed.connect(_on_selection_changed)
 	GameState.tab_changed.connect(_on_tab_changed)
 	GameState.labels_visibility_changed.connect(_on_labels_visibility_changed)
-	GameState.backend_status_changed.connect(_on_backend_status_changed)
+	GameState.service_status_changed.connect(_on_service_status_changed)
 	GameState.advisor_changed.connect(_on_advisor_changed)
 	GameState.diplomacy_changed.connect(_on_diplomacy_changed)
 	next_turn_button.pressed.connect(GameState.advance_turn)
@@ -639,7 +639,7 @@ func _build_advisor_panel() -> void:
 	drawer_content.add_child(_make_status_card(
 		"AI顾问",
 		[
-			"后端状态: %s" % GameState.backend_status,
+			"服务状态: %s" % GameState.service_status,
 			_truncate_text(GameState.ai_advice if GameState.ai_advice != "" else "当前还没有 AI 顾问建议。")
 		]
 	))
@@ -1529,7 +1529,7 @@ func _on_tab_changed(_tab_name: String) -> void:
 func _on_labels_visibility_changed(_visible: bool) -> void:
 	refresh()
 
-func _on_backend_status_changed(_status: String) -> void:
+func _on_service_status_changed(_status: String) -> void:
 	refresh()
 
 func _on_advisor_changed(_ai_advice: String, _world_data: Dictionary, _diplomatic_message: Dictionary) -> void:

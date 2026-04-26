@@ -7,7 +7,7 @@ const LocalAIServiceScript = preload("res://scripts/services/LocalAIService.gd")
 const NarrativeServiceScript = preload("res://scripts/services/NarrativeService.gd")
 const BailianProviderScript = preload("res://scripts/llm/BailianProvider.gd")
 
-signal health_checked(ok: bool)
+signal service_health_checked(ok: bool)
 signal world_query_received(payload: Dictionary)
 signal ai_decision_received(payload: Dictionary)
 signal merchant_decision_received(payload: Dictionary)
@@ -35,9 +35,9 @@ func _ensure_services() -> void:
 	_provider.configure(_settings)
 	add_child(_provider)
 
-func check_health() -> void:
+func check_service_health() -> void:
 	_ensure_services()
-	health_checked.emit(_analysis_service.check_health())
+	service_health_checked.emit(_analysis_service.check_health())
 
 func request_world_query(game_state: Dictionary, focus_system_id: Variant) -> void:
 	_ensure_services()

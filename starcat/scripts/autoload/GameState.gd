@@ -7,7 +7,7 @@ signal state_changed(state: Dictionary)
 signal selection_changed(system_id: String, fleet_id: String)
 signal labels_visibility_changed(visible: bool)
 signal tab_changed(tab_name: String)
-signal backend_status_changed(status: String)
+signal service_status_changed(status: String)
 signal advisor_changed(ai_advice: String, world_data: Dictionary, diplomatic_message: Dictionary)
 signal diplomacy_changed()
 
@@ -19,7 +19,7 @@ var active_tab: String = "OBJECTIVES"
 var selected_system_id: String = ""
 var selected_fleet_id: String = ""
 
-var backend_status: String = "checking"
+var service_status: String = "checking"
 var ai_advice: String = ""
 var world_data: Dictionary = {}
 var diplomatic_message: Dictionary = {}
@@ -33,14 +33,14 @@ var game_state: Dictionary = InitialDataScript.create_initial_state()
 
 func _ready() -> void:
 	if has_node("/root/ApiClient"):
-		ApiClient.health_checked.connect(_on_health_checked)
+		ApiClient.service_health_checked.connect(_on_service_health_checked)
 		ApiClient.world_query_received.connect(_on_world_query_received)
 		ApiClient.ai_decision_received.connect(_on_ai_decision_received)
 		ApiClient.merchant_decision_received.connect(_on_merchant_decision_received)
 		ApiClient.diplomatic_message_received.connect(_on_diplomatic_message_received)
 		ApiClient.conversation_received.connect(_on_conversation_received)
 		ApiClient.request_failed.connect(_on_api_failed)
-		ApiClient.check_health()
+		ApiClient.check_service_health()
 	_emit_all()
 
 func _emit_all() -> void:
@@ -48,7 +48,7 @@ func _emit_all() -> void:
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 	labels_visibility_changed.emit(labels_visible)
 	tab_changed.emit(active_tab)
-	backend_status_changed.emit(backend_status)
+	service_status_changed.emit(service_status)
 	advisor_changed.emit(ai_advice, world_data, diplomatic_message)
 	diplomacy_changed.emit()
 
@@ -327,7 +327,7 @@ func advance_turn() -> void:
 		return
 	turn_busy = true
 	state_changed.emit(game_state)
-	if has_node("/root/ApiClient") and backend_status == "online":
+	if has_node("/root/ApiClient") and service_status == "online":
 		ApiClient.request_merchant_decision(game_state)
 	else:
 		game_state = GameLogicScript.process_turn(game_state)
@@ -493,9 +493,9 @@ func reject_diplomatic_proposal(proposal_id: String) -> void:
 	state_changed.emit(game_state)
 	diplomacy_changed.emit()
 
-func _on_health_checked(ok: bool) -> void:
-	backend_status = "online" if ok else "offline"
-	backend_status_changed.emit(backend_status)
+func _on_service_health_checked(ok: bool) -> void:
+	service_status = "online" if ok else "offline"
+	service_status_changed.emit(service_status)
 
 func _on_world_query_received(payload: Dictionary) -> void:
 	world_data.merge(payload, true)
@@ -529,7 +529,7 @@ func _on_merchant_decision_received(payload: Dictionary) -> void:
 	advisor_changed.emit(ai_advice, world_data, diplomatic_message)
 
 func _on_api_failed(_route: String, _message: String) -> void:
-	backend_status = "offline"
+	service_status = "offline"
 	if _route == "conversation":
 		_pending_conversation_target_id = ""
 		_pending_conversation_visibility = "PUBLIC"
@@ -537,4 +537,4 @@ func _on_api_failed(_route: String, _message: String) -> void:
 		game_state = GameLogicScript.process_turn(game_state)
 		turn_busy = false
 		state_changed.emit(game_state)
-	backend_status_changed.emit(backend_status)
+	service_status_changed.emit(service_status)
