@@ -18,6 +18,7 @@ var labels_visible: bool = true
 var active_tab: String = "OBJECTIVES"
 var selected_system_id: String = ""
 var selected_fleet_id: String = ""
+var fleet_move_mode: bool = false
 
 var service_status: String = "checking"
 var ai_advice: String = ""
@@ -56,6 +57,7 @@ func reset_state() -> void:
 	game_state = InitialDataScript.create_initial_state()
 	selected_system_id = ""
 	selected_fleet_id = ""
+	fleet_move_mode = false
 	ai_advice = ""
 	world_data = {}
 	diplomatic_message = {}
@@ -205,17 +207,24 @@ func get_diplomatic_visibility(faction_id: String) -> String:
 func set_diplomatic_visibility(faction_id: String, value: String) -> void:
 	diplomatic_visibility_prefs[faction_id] = value
 
+func get_resource_breakdown(resource_key: String) -> Dictionary:
+	return GameLogicScript.faction_resource_breakdown(game_state, PLAYER_FACTION_ID, resource_key)
+
 func select_system(system_id: String) -> void:
+	if try_move_selected_fleet_to_system(system_id):
+		return
 	selected_system_id = system_id
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func select_fleet(fleet_id: String) -> void:
+	fleet_move_mode = false
 	selected_fleet_id = fleet_id
 	var fleet: Dictionary = get_fleet_by_id(fleet_id)
 	selected_system_id = fleet.get("systemId", "")
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func clear_selection() -> void:
+	fleet_move_mode = false
 	selected_system_id = ""
 	selected_fleet_id = ""
 	selection_changed.emit(selected_system_id, selected_fleet_id)
@@ -252,6 +261,31 @@ func queue_ship_batch(system_id: String, ship_type: String, count: int) -> void:
 func repair_fleet(fleet_id: String) -> void:
 	game_state = GameLogicScript.repair_fleet(game_state, fleet_id)
 	state_changed.emit(game_state)
+
+func begin_fleet_move_mode(fleet_id: String = "") -> void:
+	if fleet_id != "":
+		selected_fleet_id = fleet_id
+		var fleet: Dictionary = get_fleet_by_id(fleet_id)
+		selected_system_id = str(fleet.get("systemId", ""))
+	fleet_move_mode = selected_fleet_id != ""
+	selection_changed.emit(selected_system_id, selected_fleet_id)
+
+func cancel_fleet_move_mode() -> void:
+	if not fleet_move_mode:
+		return
+	fleet_move_mode = false
+	selection_changed.emit(selected_system_id, selected_fleet_id)
+
+func try_move_selected_fleet_to_system(system_id: String) -> bool:
+	if not fleet_move_mode or selected_fleet_id == "" or system_id == "":
+		return false
+	var selected_fleet: Dictionary = get_fleet_by_id(selected_fleet_id)
+	if str(selected_fleet.get("systemId", "")) == system_id:
+		return false
+	if not get_reachable_system_ids(selected_fleet_id).has(system_id):
+		return false
+	move_selected_fleet(system_id)
+	return true
 
 func set_selected_fleet_mission(mission: String) -> void:
 	if selected_fleet_id == "":
@@ -318,6 +352,7 @@ func move_selected_fleet(system_id: String) -> void:
 	if selected_fleet_id == "":
 		return
 	game_state = GameLogicScript.move_fleet(game_state, selected_fleet_id, system_id)
+	fleet_move_mode = false
 	selected_system_id = system_id
 	state_changed.emit(game_state)
 	selection_changed.emit(selected_system_id, selected_fleet_id)
@@ -353,6 +388,10 @@ func request_relationship_scan(faction_id: String) -> void:
 func request_proposal_evaluation(proposal_id: String) -> void:
 	if has_node("/root/ApiClient") and proposal_id != "":
 		ApiClient.request_proposal_evaluation(game_state, proposal_id, PLAYER_FACTION_ID)
+
+func request_diplomatic_action(target_faction_id: String, action_type: String, action_payload: Dictionary = {}) -> void:
+	if has_node("/root/ApiClient") and target_faction_id != "" and action_type != "":
+		ApiClient.request_diplomatic_action(game_state, PLAYER_FACTION_ID, target_faction_id, action_type, action_payload)
 
 func request_construction_validation(system_id: String, target_id: String, kind: String) -> void:
 	if has_node("/root/ApiClient") and system_id != "" and target_id != "":
@@ -500,6 +539,7 @@ func _on_service_health_checked(ok: bool) -> void:
 func _on_world_query_received(payload: Dictionary) -> void:
 	world_data.merge(payload, true)
 	advisor_changed.emit(ai_advice, world_data, diplomatic_message)
+	diplomacy_changed.emit()
 
 func _on_ai_decision_received(payload: Dictionary) -> void:
 	ai_advice = payload.get("structured_text", "")

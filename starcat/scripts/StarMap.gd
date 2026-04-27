@@ -224,6 +224,8 @@ func _has_text_input_focus() -> bool:
 
 func _on_system_input(_camera: Node, event: InputEvent, _position: Vector3, _normal: Vector3, _shape_idx: int, system_id: String) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if GameState.try_move_selected_fleet_to_system(system_id):
+			return
 		GameState.select_system(system_id)
 
 func _on_fleet_input(_camera: Node, event: InputEvent, _position: Vector3, _normal: Vector3, _shape_idx: int, fleet_id: String) -> void:

@@ -95,6 +95,9 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('turn_title.text = "回合"', hud_source)
         self.assertIn('era_title.text = "时代"', hud_source)
         self.assertIn('food_title.text = "食物"', hud_source)
+        self.assertIn('food_chip.tooltip_text = _resource_tooltip_text("food")', hud_source)
+        self.assertIn('func _resource_tooltip_text(resource_key: String) -> String:', hud_source)
+        self.assertIn('GameState.get_resource_breakdown(resource_key)', hud_source)
 
     def test_hud_static_labels_define_explicit_font_colors(self) -> None:
         hud_scene = _read_text("starcat/scenes/HudLayer.tscn")
@@ -162,6 +165,14 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertNotIn("当前版本主要", initial_data)
         self.assertNotIn("后续会接入", initial_data)
         self.assertNotIn("暂不提供额外数值加成", initial_data)
+        self.assertIn('["每个已控星系 +2 能源", "商路矿产 +1"]', initial_data)
+        self.assertIn('["解锁太空船坞", "新造舰船 +15 生命 / +1 速度"]', initial_data)
+        self.assertIn('["解锁科研实验室", "研究速度 +35%"]', initial_data)
+        self.assertIn('["解锁正式殖民", "开放 4 类殖民方案"]', initial_data)
+        self.assertIn('["解锁正式条约", "条约接受判定 +25 信任权重"]', initial_data)
+        self.assertNotIn("更快更耐打", initial_data)
+        self.assertNotIn("更容易被接受", initial_data)
+        self.assertNotIn("成长更快", initial_data)
 
     def test_diplomacy_panel_uses_grouped_action_sections_and_humanized_labels(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
@@ -202,17 +213,53 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('func _apply_diplomacy_preset(editor: TextEdit, faction_id: String, template: String) -> void:', hud_source)
         self.assertIn('var preset_wrap: FlowContainer = composer.get_node("PresetWrap")', hud_source)
         self.assertIn('preset_button.pressed.connect(_apply_diplomacy_preset.bind(draft_box, faction_id, str(preset.get("template", ""))))', hud_source)
+        self.assertIn('"限制舰队逼近"', hud_source)
+        self.assertIn('"资源换停火"', hud_source)
+        self.assertIn('"科研互换"', hud_source)
         self.assertIn('[node name="PresetWrap" type="FlowContainer" parent="."]', composer_scene)
         self.assertIn('custom_minimum_size = Vector2(0, 96)', composer_scene)
+
+    def test_hud_rebuilds_open_global_modal_immediately_after_state_changes(self) -> None:
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+
+        self.assertIn('func _refresh_visible_panels() -> void:', hud_source)
+        self.assertIn('if center_modal_overlay.visible and GameState.selected_system_id == "" and GameState.selected_fleet_id == "":', hud_source)
+        self.assertIn('_open_global_tab_modal(GameState.active_tab)', hud_source)
+        self.assertIn('refresh()\n\t_refresh_visible_panels()', hud_source)
+
+    def test_diplomatic_actions_flow_through_game_state_and_local_analysis_service(self) -> None:
+        game_state_source = _read_text("starcat/scripts/autoload/GameState.gd")
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+        analysis_source = _read_text("starcat/scripts/services/GameAnalysisService.gd")
+
+        self.assertIn('func request_diplomatic_action(target_faction_id: String, action_type: String, action_payload: Dictionary = {}) -> void:', game_state_source)
+        self.assertIn('ApiClient.request_diplomatic_action(game_state, PLAYER_FACTION_ID, target_faction_id, action_type, action_payload)', game_state_source)
+        self.assertIn('GameState.request_diplomatic_action.bind(', hud_source)
+        self.assertIn('"REQUEST_BORDER_LIMIT"', analysis_source)
+        self.assertIn('"REQUEST_FLEET_DISTANCE"', analysis_source)
+        self.assertIn('"REQUEST_RESOURCE_TRADE"', analysis_source)
+        self.assertIn('"REQUEST_RESEARCH_EXCHANGE"', analysis_source)
+
+    def test_player_message_intent_parsing_supports_restrictions_and_trades(self) -> None:
+        game_logic_source = _read_text("starcat/scripts/GameLogic.gd")
+
+        self.assertIn('"RESTRICTION"', game_logic_source)
+        self.assertIn('"trade_kind"', game_logic_source)
+        self.assertIn('label = "限制请求"', game_logic_source)
+        self.assertIn('label = "交易提案"', game_logic_source)
 
     def test_fleet_panel_groups_actions_into_task_movement_and_support(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
 
         self.assertIn('_panel_add(_make_section_title("任务"))', hud_source)
-        self.assertIn('_panel_add(_make_section_title("移动"))', hud_source)
-        self.assertIn('_panel_add(_make_section_title("后勤维护"))', hud_source)
+        self.assertIn('_panel_add(_make_status_card("任务状态"', hud_source)
+        self.assertIn('_make_action_button("进入移动模式"', hud_source)
+        self.assertIn('_make_action_button("退出移动模式"', hud_source)
+        self.assertIn('_make_action_button("修复舰队"', hud_source)
+        self.assertNotIn('_panel_add(_make_section_title("移动"))', hud_source)
+        self.assertNotIn('_panel_add(_make_section_title("后勤维护"))', hud_source)
         self.assertNotIn('row.add_child(_make_action_button("探索", GameState.explore_system.bind(system_id)))', hud_source)
-        self.assertIn('support_row.add_child(_make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "primary"))', hud_source)
+        self.assertIn('GameState.begin_fleet_move_mode.bind(fleet.get("id", ""))', hud_source)
 
     def test_star_map_uses_channel_based_label_avoidance(self) -> None:
         star_map_source = _read_text("starcat/scripts/StarMap.gd")
@@ -228,6 +275,26 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('return Vector3(0.0, 2.55 + 0.62 * float(slot), 0.0)', star_map_source)
         self.assertNotIn('var side: float = 1.0 if slot % 2 == 0 else -1.0', star_map_source)
         self.assertNotIn('2.3 + side * 0.45 * float(row)', star_map_source)
+
+    def test_star_map_supports_click_to_move_when_fleet_move_mode_is_active(self) -> None:
+        star_map_source = _read_text("starcat/scripts/StarMap.gd")
+        game_state_source = _read_text("starcat/scripts/autoload/GameState.gd")
+
+        self.assertIn('if GameState.try_move_selected_fleet_to_system(system_id):', star_map_source)
+        self.assertIn('func begin_fleet_move_mode(fleet_id: String = "") -> void:', game_state_source)
+        self.assertIn('func cancel_fleet_move_mode() -> void:', game_state_source)
+        self.assertIn('func try_move_selected_fleet_to_system(system_id: String) -> bool:', game_state_source)
+        self.assertIn('var fleet_move_mode: bool = false', game_state_source)
+
+    def test_communications_panel_is_grouped_into_system_diplomatic_and_proposals(self) -> None:
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+
+        self.assertIn('_panel_add(_make_section_title("系统消息"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("外交通信"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("提案"))', hud_source)
+        self.assertNotIn('_panel_add(_make_section_title("短期记忆"))', hud_source)
+        self.assertNotIn('_panel_add(_make_section_title("长期归档"))', hud_source)
+        self.assertNotIn('_panel_add(_make_section_title("通信记录"))', hud_source)
 
 
 if __name__ == "__main__":

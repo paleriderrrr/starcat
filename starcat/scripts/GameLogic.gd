@@ -740,14 +740,25 @@ static func _compare_intelligence_entry(a: Dictionary, b: Dictionary) -> bool:
 
 static func parse_player_diplomatic_intent(message_text: String) -> Dictionary:
 	var lowered: String = message_text.to_lower()
+	if "限制" in message_text or "保持两跳" in message_text or "暂停边境扩张" in message_text or "停止扩张" in message_text:
+		return {
+			"type": "RESTRICTION",
+			"restriction_kind": "FLEET_DISTANCE" if "舰队" in message_text or "两跳" in message_text else "BORDER_LIMIT",
+			"tone": "firm",
+			"trust_delta": -2
+		}
 	if "停火" in message_text or "互不侵犯" in message_text or "ceasefire" in lowered or "non aggression" in lowered:
 		return {"type": "TREATY", "treaty": "NON_AGGRESSION", "tone": "friendly", "trust_delta": 6}
 	if "科研协定" in message_text or "联合研究" in message_text or "research" in lowered:
 		return {"type": "TREATY", "treaty": "RESEARCH_ACCORD", "tone": "friendly", "trust_delta": 5}
 	if "同盟" in message_text or "结盟" in message_text or "alliance" in lowered:
 		return {"type": "TREATY", "treaty": "ALLIANCE", "tone": "friendly", "trust_delta": 7}
+	if "资源换停火" in message_text or ("停火" in message_text and ("资源" in message_text or "矿产" in message_text or "能源" in message_text)):
+		return {"type": "TRADE", "trade_kind": "RESOURCE_FOR_CEASEFIRE", "tone": "friendly", "trust_delta": 4}
+	if "科研互换" in message_text or "技术互换" in message_text or ("科研" in message_text and "交换" in message_text):
+		return {"type": "TRADE", "trade_kind": "RESEARCH_EXCHANGE", "tone": "friendly", "trust_delta": 5}
 	if "贸易" in message_text or "通商" in message_text or "trade" in lowered or "peace" in lowered or "和平" in message_text:
-		return {"type": "TRADE", "tone": "friendly", "trust_delta": 5}
+		return {"type": "TRADE", "trade_kind": "RESOURCE_TRADE", "tone": "friendly", "trust_delta": 5}
 	if "进攻" in message_text or "宣战" in message_text or "威胁" in message_text or "attack" in lowered or "war" in lowered:
 		return {"type": "WARNING", "tone": "firm", "trust_delta": -8}
 	return {"type": "MESSAGE", "tone": "neutral", "trust_delta": 1}
@@ -762,9 +773,17 @@ static func describe_player_diplomatic_intent(message_text: String) -> Dictionar
 		var treaty_label: String = InitialDataScript.treaty_labels().get(treaty_id, treaty_id)
 		label = "条约提案"
 		detail = "这条信息会被识别为对“%s”的正式提案，AI 会按当前关系、战略处境和人格倾向进行回应。" % treaty_label
+	elif intent_type == "RESTRICTION":
+		label = "限制请求"
+		detail = "这条信息会被视为带条件的限制要求，AI 会重点评估压力、边境安全和可接受的退让空间。"
 	elif intent_type == "TRADE":
-		label = "贸易请求"
-		detail = "这条信息会被识别为贸易或和平导向接触，更容易提升信任并触发资源交换相关反馈。"
+		label = "交易提案"
+		var trade_kind: String = str(intent.get("trade_kind", "RESOURCE_TRADE"))
+		detail = "这条信息会被识别为交易导向接触，更容易触发资源交换和条件谈判。"
+		if trade_kind == "RESOURCE_FOR_CEASEFIRE":
+			detail = "这条信息会被识别为“资源换停火”提案，AI 会同时衡量现实利益与缓和局势的价值。"
+		elif trade_kind == "RESEARCH_EXCHANGE":
+			detail = "这条信息会被识别为“科研互换”提案，AI 会重点评估信任水平与技术泄露风险。"
 	elif intent_type == "WARNING":
 		label = "强硬警告"
 		detail = "这条信息会被视为威胁或战争信号，通常会降低信任，并可能推动 AI 进入警戒或敌对姿态。"
@@ -1760,6 +1779,42 @@ static func faction_yield(state: Dictionary, faction_id: String) -> Dictionary:
 		for _accord: Dictionary in active_treaties_for_faction(state, "f_player", "RESEARCH_ACCORD"):
 			bundle["industry"] = int(bundle.get("industry", 0)) + 2
 	return apply_energy_shortage_penalty(bundle)
+
+static func faction_resource_breakdown(state: Dictionary, faction_id: String, resource_key: String) -> Dictionary:
+	var base_production: Dictionary = empty_resources()
+	var building_maintenance: Dictionary = empty_resources()
+	var fleet_maintenance: Dictionary = empty_resources()
+	var treaty_modifier: Dictionary = empty_resources()
+	var owned: Array = owned_systems(state, faction_id)
+	for system: Dictionary in owned:
+		var multiplier: float = system_yield_multiplier(system)
+		base_production = add_resources(base_production, scale_resources(system.get("resources", {}), multiplier))
+		for building: Dictionary in system.get("buildings", []):
+			base_production = add_resources(base_production, scale_resources(building.get("production", {}), multiplier))
+			building_maintenance = add_resources(building_maintenance, building.get("maintenance", {}))
+	if has_research(state, "tech_trade_net"):
+		treaty_modifier["energy"] = int(treaty_modifier.get("energy", 0)) + owned.size() * 2
+		treaty_modifier["minerals"] = int(treaty_modifier.get("minerals", 0)) + owned.size()
+	if faction_id == "f_player":
+		for _treaty: Dictionary in active_treaties_for_faction(state, "f_player", "TRADE_PACT"):
+			treaty_modifier["energy"] = int(treaty_modifier.get("energy", 0)) + 3
+			treaty_modifier["minerals"] = int(treaty_modifier.get("minerals", 0)) + 2
+		for _accord: Dictionary in active_treaties_for_faction(state, "f_player", "RESEARCH_ACCORD"):
+			treaty_modifier["industry"] = int(treaty_modifier.get("industry", 0)) + 2
+	var combined: Dictionary = add_resources(add_resources(base_production, building_maintenance), add_resources(fleet_maintenance, treaty_modifier))
+	var net: Dictionary = apply_energy_shortage_penalty(combined)
+	var residual: int = int(net.get(resource_key, 0)) - int(combined.get(resource_key, 0))
+	if residual != 0:
+		fleet_maintenance[resource_key] = int(fleet_maintenance.get(resource_key, 0)) + residual
+		combined = add_resources(add_resources(base_production, building_maintenance), add_resources(fleet_maintenance, treaty_modifier))
+		net = apply_energy_shortage_penalty(combined)
+	return {
+		"base_production": int(base_production.get(resource_key, 0)),
+		"building_maintenance": int(building_maintenance.get(resource_key, 0)),
+		"fleet_maintenance": int(fleet_maintenance.get(resource_key, 0)),
+		"treaty_modifier": int(treaty_modifier.get(resource_key, 0)),
+		"net": int(net.get(resource_key, 0)),
+	}
 
 static func apply_faction_economy(state: Dictionary) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
@@ -3320,11 +3375,14 @@ static func player_freeform_message(state: Dictionary, target_faction_id: String
 		"TREATY":
 			title = "条约提案"
 			content_type = "PROPOSAL"
+		"RESTRICTION":
+			title = "限制请求"
+			content_type = "PROPOSAL"
 		"WARNING":
 			title = "强硬警告"
 			content_type = "WARNING"
 		"TRADE":
-			title = "贸易请求"
+			title = "交易提案"
 			content_type = "PROPOSAL"
 	next_state = add_diplomatic_message(next_state, player.get("id", ""), [target_faction_id], "SINGLE", visibility_level, content_type, title, message_text.strip_edges(), true)
 	next_state = add_diplomatic_memory(next_state, title, "玩家向 %s 发起了新的外交接触。" % target.get("name", target_faction_id), [player.get("id", ""), target_faction_id], "PROPOSAL", 1)

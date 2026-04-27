@@ -200,14 +200,51 @@ func execute_diplomatic_action(game_state: Dictionary, source_faction_id: String
 		"new_relation_state": relation,
 		"reputation_change": 0,
 		"rejection_reason": null,
+		"target_faction_id": target_faction_id,
+		"relationship_level": str(relation.get("level", "UNKNOWN")),
+		"summary": "外交动作已记录。",
+		"detail_lines": [],
 	}
 	match action_type:
 		"DECLARE_WAR":
 			response["new_relation_state"] = {"level": "HOSTILE", "trust": -100, "fear": int(relation.get("fear", 0)) + 15}
 			response["reputation_change"] = -15
+			response["relationship_level"] = "HOSTILE"
+			response["summary"] = "宣战会直接把关系推入敌对。"
+			response["detail_lines"] = ["信任将跌至最低。", "对方会把你的舰队部署视为直接威胁。"]
 		"PROPOSE_ALLIANCE", "PROPOSE_NON_AGGRESSION", "PROPOSE_TRADE":
 			response["new_relation_state"] = relation
 			response["reputation_change"] = 2
+			response["summary"] = "正式提案可以提升合作预期。"
+			response["detail_lines"] = ["当前关系允许继续试探。", "若先用照会铺垫，接受率会更高。"]
+		"REQUEST_BORDER_LIMIT":
+			response["summary"] = "对方会把这视为边境降温条件。"
+			response["reputation_change"] = -1
+			response["detail_lines"] = [
+				"建议先要求暂停边境扩张，再谈观察期与通报机制。",
+				"当前压力点: %s。" % str(payload.get("scope", "border_expansion"))
+			]
+		"REQUEST_FLEET_DISTANCE":
+			response["summary"] = "对方会把这视为军事限距要求。"
+			response["reputation_change"] = -2
+			response["detail_lines"] = [
+				"若当前恐惧值偏高，这类要求更容易被接受。",
+				"建议距离: %s。" % str(payload.get("distance", "two_jumps"))
+			]
+		"REQUEST_RESOURCE_TRADE":
+			response["summary"] = "这是可进入谈判的资源交换提案。"
+			response["reputation_change"] = 3
+			response["detail_lines"] = [
+				"优先交换对方短缺资源，成功率最高。",
+				"建议方案: %s。" % str(payload.get("offer", "minerals_for_energy"))
+			]
+		"REQUEST_RESEARCH_EXCHANGE":
+			response["summary"] = "这是有限科研互换提案。"
+			response["reputation_change"] = 2
+			response["detail_lines"] = [
+				"对方会优先评估信任和技术外泄风险。",
+				"建议范围: %s。" % str(payload.get("scope", "civilian_science"))
+			]
 		_:
 			response["status"] = "INVALID_REQUEST"
 			response["rejection_reason"] = "当前未支持该外交动作。"
@@ -581,4 +618,3 @@ func _resource_label(key: String) -> String:
 			return "能源"
 		_:
 			return key
-
