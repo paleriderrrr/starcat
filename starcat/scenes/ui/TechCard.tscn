@@ -29,7 +29,6 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "科技名称"
 
 [node name="Description" type="Label" parent="Content"]
@@ -37,7 +36,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "科技描述"
 
 [node name="Meta" type="Label" parent="Content"]
@@ -45,9 +43,38 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "研究信息"
 
-[node name="Details" type="VBoxContainer" parent="Content"]
+[node name="Columns" type="HBoxContainer" parent="Content"]
 layout_mode = 2
-theme_override_constants/separation = 2
+theme_override_constants/separation = 12
+
+[node name="EffectsColumn" type="VBoxContainer" parent="Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="EffectsTitle" type="Label" parent="Content/Columns/EffectsColumn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.988235, 0.85098, 0.533333, 1)
+theme_override_font_sizes/font_size = 15
+text = "加成"
+
+[node name="EffectsList" type="VBoxContainer" parent="Content/Columns/EffectsColumn"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="UnlocksColumn" type="VBoxContainer" parent="Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="UnlocksTitle" type="Label" parent="Content/Columns/UnlocksColumn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.541176, 0.913725, 0.992157, 1)
+theme_override_font_sizes/font_size = 15
+text = "解锁"
+
+[node name="UnlocksList" type="VBoxContainer" parent="Content/Columns/UnlocksColumn"]
+layout_mode = 2
+theme_override_constants/separation = 4

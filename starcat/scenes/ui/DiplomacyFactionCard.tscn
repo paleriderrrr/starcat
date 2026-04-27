@@ -29,7 +29,6 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "势力 / 领袖"
 
 [node name="Relation" type="Label" parent="Content"]
@@ -37,7 +36,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "关系等级"
 
 [node name="Stats" type="Label" parent="Content"]
@@ -45,7 +43,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "信任与利益"
 
 [node name="Traits" type="Label" parent="Content"]
@@ -53,7 +50,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "特征与条约"
 
 [node name="Persona" type="Label" parent="Content"]
@@ -61,5 +57,4 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "公开人设"

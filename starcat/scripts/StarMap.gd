@@ -94,7 +94,8 @@ func _build_systems() -> void:
 		body.input_event.connect(_on_system_input.bind(system.get("id", "")))
 		systems_root.add_child(body)
 		if GameState.labels_visible and system.get("visibilityLevel", "HIDDEN") != "HIDDEN":
-			body.add_child(_make_label("%s\n%s" % [system.get("name", ""), GameState.get_owner_name(system.get("ownerId", null))], Vector3(0.0, 0.9, 0.0)))
+			body.add_child(_make_label(str(system.get("name", "")), _system_label_offset(false)))
+			body.add_child(_make_label(GameState.get_owner_name(system.get("ownerId", null)), _system_label_offset(true), true))
 
 func _build_hyperlanes() -> void:
 	var reachable: Array = GameState.get_reachable_system_ids(GameState.selected_fleet_id)
@@ -111,10 +112,14 @@ func _build_hyperlanes() -> void:
 		lanes_root.add_child(mesh_instance)
 
 func _build_fleets() -> void:
+	var fleet_counts_by_system: Dictionary = {}
 	for fleet: Dictionary in GameState.game_state.get("fleets", []):
-		var system: Dictionary = GameState.get_system_by_id(fleet.get("systemId", ""))
+		var system_id: String = str(fleet.get("systemId", ""))
+		var system: Dictionary = GameState.get_system_by_id(system_id)
 		if system.is_empty() or system.get("visibilityLevel", "HIDDEN") == "HIDDEN":
 			continue
+		var fleet_slot: int = int(fleet_counts_by_system.get(system_id, 0))
+		fleet_counts_by_system[system_id] = fleet_slot + 1
 		var marker: StaticBody3D = StaticBody3D.new()
 		marker.name = fleet.get("id", "")
 		marker.position = system.get("position", Vector3.ZERO) + Vector3(0.0, FLEET_HEIGHT, 0.0)
@@ -133,7 +138,7 @@ func _build_fleets() -> void:
 		marker.input_event.connect(_on_fleet_input.bind(fleet.get("id", "")))
 		fleets_root.add_child(marker)
 		if GameState.labels_visible:
-			marker.add_child(_make_label(fleet.get("name", ""), Vector3(0.0, 0.55, 0.0), true))
+			marker.add_child(_make_label(str(fleet.get("name", "")), _fleet_label_offset(fleet_slot), true))
 
 func _make_system_material(system: Dictionary, reachable: bool) -> StandardMaterial3D:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
@@ -178,10 +183,18 @@ func _make_label(text: String, offset: Vector3, compact: bool = false) -> Label3
 	label.position = offset
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.modulate = Color("F8F7FF")
-	label.pixel_size = 0.01 if compact else 0.012
-	label.font_size = 30 if compact else 38
+	label.pixel_size = 0.02 if compact else 0.024
+	label.font_size = 60 if compact else 76
 	label.outline_size = 8
 	return label
+
+func _system_label_offset(compact: bool = false) -> Vector3:
+	return Vector3(-2.55 if compact else -2.75, 1.35 if compact else 2.35, 0.0)
+
+func _fleet_label_offset(slot: int) -> Vector3:
+	var row: int = slot / 2
+	var side: float = 1.0 if slot % 2 == 0 else -1.0
+	return Vector3(2.3 + side * 0.45 * float(row), 2.65 + 0.95 * float(row), 0.0)
 
 func _get_owner_color(owner_id: Variant) -> Color:
 	if owner_id == null:

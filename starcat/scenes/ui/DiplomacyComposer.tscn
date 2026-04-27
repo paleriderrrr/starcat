@@ -5,10 +5,15 @@
 [node name="DiplomacyComposer" type="VBoxContainer"]
 theme_override_constants/separation = 8
 
+[node name="PresetWrap" type="FlowContainer" parent="."]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+
 [node name="DraftBox" type="TextEdit" parent="."]
-custom_minimum_size = Vector2(0, 140)
+custom_minimum_size = Vector2(0, 96)
 size_flags_vertical = 3
-placeholder_text = "输入要发送给该势力的结构化外交文本。建议写明目标、条件、交换内容与态度，让 AI 更容易解析和回应。"
+placeholder_text = "输入简短照会。你可以先点击上方预设，再按当前局势补上条件、交换内容或警告措辞。"
 
 [node name="Controls" type="HBoxContainer" parent="."]
 layout_mode = 2
@@ -24,4 +29,4 @@ mouse_default_cursor_shape = 2
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "发送消息"
+text = "发送照会"

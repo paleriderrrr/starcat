@@ -2011,7 +2011,8 @@ static func expire_treaties(state: Dictionary) -> Dictionary:
 		var treaty: Dictionary = treaties[index]
 		if treaty.get("status", "") != "ACTIVE":
 			continue
-		var expires_on: int = int(treaty.get("expiresOnTurn", 0))
+		var expires_raw: Variant = treaty.get("expiresOnTurn", 0)
+		var expires_on: int = int(expires_raw) if expires_raw != null else 0
 		if expires_on <= 0 or expires_on > int(next_state.get("turn", 1)):
 			continue
 		treaty["status"] = "EXPIRED"

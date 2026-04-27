@@ -428,18 +428,19 @@ func _build_tech_panel() -> void:
 		for tech: Dictionary in GameState.game_state.get("technologies", []):
 			if tech.get("id", "") == str(current_research_id):
 				drawer_content.add_child(_make_tech_card(tech, true))
-				drawer_content.add_child(_make_action_button("取消当前研究", GameState.cancel_research))
+				drawer_content.add_child(_make_action_button("取消当前研究", GameState.cancel_research, "danger"))
 				break
+	drawer_content.add_child(_make_section_title("可研究项目"))
 	for tech: Dictionary in GameState.game_state.get("technologies", []):
 		if tech.get("status", "") != "AVAILABLE":
 			continue
 		drawer_content.add_child(_make_tech_card(tech, false))
-		var button: Button = _make_action_button("开始研究", GameState.start_research.bind(tech.get("id", "")))
+		var button: Button = _make_action_button("开始研究", GameState.start_research.bind(tech.get("id", "")), "primary")
 		button.disabled = current_research_id != null
 		drawer_content.add_child(button)
 
 func _build_diplomacy_panel() -> void:
-	drawer_content.add_child(_make_section_title("外交总览"))
+	drawer_content.add_child(_make_section_title("局势简报"))
 	var interception_report: Dictionary = GameState.get_interception_report()
 	var diplomacy_report: Dictionary = GameState.get_diplomatic_victory_report()
 	drawer_content.add_child(_make_status_card(
@@ -461,6 +462,7 @@ func _build_diplomacy_panel() -> void:
 			"支持票: %s/%s" % [str(diplomacy_report.get("votes_for", 0)), str(diplomacy_report.get("required_votes", 0))]
 		]
 	))
+	drawer_content.add_child(_make_section_title("外交对象"))
 	for faction: Dictionary in GameState.game_state.get("factions", []):
 		if faction.get("isPlayer", false):
 			continue
@@ -469,9 +471,9 @@ func _build_diplomacy_panel() -> void:
 		drawer_content.add_child(_make_diplomacy_faction_card(faction, relation, active_treaties))
 		var history: Array = GameState.get_relation_history(faction.get("id", ""))
 		var detail_row: HBoxContainer = _action_row()
-		detail_row.add_child(_make_action_button("查看详情", _open_faction_modal.bind(faction, relation, active_treaties, history)))
-		detail_row.add_child(_make_action_button("关系扫描", GameState.request_relationship_scan.bind(faction.get("id", ""))))
-		detail_row.add_child(_make_action_button("友好致函", GameState.request_diplomatic_message.bind(faction.get("id", ""), "friendly")))
+		detail_row.add_child(_make_action_button("查看关系详情", _open_faction_modal.bind(faction, relation, active_treaties, history), "primary"))
+		detail_row.add_child(_make_action_button("关系扫描", GameState.request_relationship_scan.bind(faction.get("id", "")), "neutral"))
+		detail_row.add_child(_make_action_button("发送友好照会", GameState.request_diplomatic_message.bind(faction.get("id", ""), "friendly"), "accent"))
 		drawer_content.add_child(detail_row)
 
 	drawer_content.add_child(_make_section_title("可见通信"))
@@ -503,17 +505,17 @@ func _build_diplomacy_panel() -> void:
 		for proposal: Dictionary in pending_proposals:
 			drawer_content.add_child(_make_proposal_card(proposal))
 			var proposal_row: HBoxContainer = _action_row()
-			proposal_row.add_child(_make_action_button("查看详情", _open_proposal_modal.bind(proposal)))
-			proposal_row.add_child(_make_action_button("接受提案", GameState.accept_diplomatic_proposal.bind(proposal.get("id", ""))))
-			proposal_row.add_child(_make_action_button("拒绝提案", GameState.reject_diplomatic_proposal.bind(proposal.get("id", ""))))
-			proposal_row.add_child(_make_action_button("AI评估", GameState.request_proposal_evaluation.bind(proposal.get("id", ""))))
+			proposal_row.add_child(_make_action_button("查看详情", _open_proposal_modal.bind(proposal), "neutral"))
+			proposal_row.add_child(_make_action_button("接受提案", GameState.accept_diplomatic_proposal.bind(proposal.get("id", "")), "primary"))
+			proposal_row.add_child(_make_action_button("拒绝提案", GameState.reject_diplomatic_proposal.bind(proposal.get("id", "")), "danger"))
+			proposal_row.add_child(_make_action_button("战略评估", GameState.request_proposal_evaluation.bind(proposal.get("id", "")), "accent"))
 			drawer_content.add_child(proposal_row)
 
 	var relationship_report: Dictionary = GameState.world_data.get("relationship_report", {})
 	if not relationship_report.is_empty():
-		drawer_content.add_child(_make_section_title("关系查询 API"))
+		drawer_content.add_child(_make_section_title("关系简报"))
 		drawer_content.add_child(_make_api_report_card(
-			"关系查询 API",
+			"关系简报",
 			"信任 %s / 利益 %s / 恐惧 %s / 好感 %s / 记忆 %s / 关系等级: %s" % [
 				str(relationship_report.get("trust_score", 0)),
 				str(relationship_report.get("utility_score", 0)),
@@ -527,7 +529,7 @@ func _build_diplomacy_panel() -> void:
 
 	var proposal_evaluation_report: Dictionary = GameState.world_data.get("proposal_evaluation_report", {})
 	if not proposal_evaluation_report.is_empty():
-		drawer_content.add_child(_make_section_title("提案评估 API"))
+		drawer_content.add_child(_make_section_title("战略评估"))
 		var detail_lines: Array = []
 		for item: String in proposal_evaluation_report.get("key_concerns", []):
 			detail_lines.append("关注点: %s" % item)
@@ -536,7 +538,7 @@ func _build_diplomacy_panel() -> void:
 			detail_lines.append("反提案: %s" % PROPOSAL_TYPE_LABELS.get(str(counter.get("preferred_type", "")), str(counter.get("preferred_type", ""))))
 			detail_lines.append(str(counter.get("summary", "")))
 		drawer_content.add_child(_make_api_report_card(
-			"提案评估 API",
+			"战略评估",
 			"接受评分: %s / 建议动作: %s" % [
 				str(proposal_evaluation_report.get("acceptance_score", 0)),
 				_recommended_action_label(str(proposal_evaluation_report.get("recommended_action", "REJECT")))
@@ -568,7 +570,7 @@ func _build_diplomacy_panel() -> void:
 			_truncate_text(str(GameState.diplomatic_message.get("content", ""))),
 			""
 		))
-		drawer_content.add_child(_make_action_button("查看详情", _open_message_modal.bind(GameState.diplomatic_message)))
+		drawer_content.add_child(_make_action_button("查看详情", _open_message_modal.bind(GameState.diplomatic_message), "primary"))
 
 func _build_communications_panel() -> void:
 	drawer_content.add_child(_make_section_title("通讯中心"))
@@ -714,9 +716,9 @@ func _build_advisor_panel() -> void:
 
 	var world_state_report: Dictionary = GameState.world_data.get("world_state_report", {})
 	if not world_state_report.is_empty():
-		drawer_content.add_child(_make_section_title("世界态势 API"))
+		drawer_content.add_child(_make_section_title("世界态势简报"))
 		drawer_content.add_child(_make_api_report_card(
-			"世界态势 API",
+			"世界态势简报",
 			"平衡评估: %s / 实体数: %s / 战争数: %s" % [
 				str(world_state_report.get("balance_assessment", "UNKNOWN")),
 				str(world_state_report.get("matching_entities", []).size()),
@@ -730,7 +732,7 @@ func _build_advisor_panel() -> void:
 			]
 		))
 		drawer_content.add_child(_make_action_button("查看详情", _open_advisor_modal.bind(
-			"世界态势 API",
+			"世界态势简报",
 			"完整世界态势分析",
 			"平衡评估: %s\n实体数: %s\n战争数: %s\n势力数量: %s\n舰队数量: %s\n可见星系: %s\n平均军力: %s" % [
 				str(world_state_report.get("balance_assessment", "UNKNOWN")),
@@ -745,9 +747,9 @@ func _build_advisor_panel() -> void:
 		)))
 	var fleet_status_report: Dictionary = GameState.world_data.get("fleet_status_report", {})
 	if not fleet_status_report.is_empty():
-		drawer_content.add_child(_make_section_title("舰队状态 API"))
+		drawer_content.add_child(_make_section_title("舰队状态简报"))
 		drawer_content.add_child(_make_api_report_card(
-			"舰队状态 API",
+			"舰队状态简报",
 			"位置: %s / 任务: %s / 战备: %s" % [
 				str(fleet_status_report.get("location", "")),
 				str(fleet_status_report.get("mission", "")),
@@ -760,22 +762,22 @@ func _build_advisor_panel() -> void:
 		))
 	var tactical_report: Dictionary = GameState.world_data.get("tactical_report", {})
 	if not tactical_report.is_empty():
-		drawer_content.add_child(_make_section_title("战术建议 API"))
+		drawer_content.add_child(_make_section_title("战术建议"))
 		var tactical_lines: Array = []
 		for item: Variant in tactical_report.get("expected_outcomes", []):
 			tactical_lines.append("预期结果: %s" % str(item))
 		for item: Variant in tactical_report.get("risk_assessments", []):
 			tactical_lines.append("风险: %s" % str(item))
 		drawer_content.add_child(_make_api_report_card(
-			"战术建议 API",
+			"战术建议",
 			"推荐战术: %s" % str(tactical_report.get("recommended_tactics", "未返回")),
 			tactical_lines
 		))
 	var resource_status_report: Dictionary = GameState.world_data.get("resource_status_report", {})
 	if not resource_status_report.is_empty():
-		drawer_content.add_child(_make_section_title("资源诊断 API"))
+		drawer_content.add_child(_make_section_title("资源诊断"))
 		drawer_content.add_child(_make_api_report_card(
-			"资源诊断 API",
+			"资源诊断",
 			"食物 %s / 矿产 %s / 工业 %s / 能源 %s" % [
 				_signed_int_text(int(resource_status_report.get("food", {}).get("net", 0))),
 				_signed_int_text(int(resource_status_report.get("minerals", {}).get("net", 0))),
@@ -786,9 +788,9 @@ func _build_advisor_panel() -> void:
 		))
 	var combat_protocol_report: Dictionary = GameState.world_data.get("combat_protocol_report", {})
 	if not combat_protocol_report.is_empty():
-		drawer_content.add_child(_make_section_title("战斗预演 API"))
+		drawer_content.add_child(_make_section_title("战斗预演"))
 		drawer_content.add_child(_make_api_report_card(
-			"战斗预演 API",
+			"战斗预演",
 			"状态: %s / 胜利预估: %s / 剩余战力: %s%%" % [
 				str(combat_protocol_report.get("status", "INVALID")),
 				"是" if bool(combat_protocol_report.get("victory", false)) else "否",
@@ -801,7 +803,7 @@ func _build_advisor_panel() -> void:
 		))
 	var director_event_report: Dictionary = GameState.world_data.get("director_event_report", {})
 	if not director_event_report.is_empty():
-		drawer_content.add_child(_make_section_title("导演事件 API"))
+		drawer_content.add_child(_make_section_title("导演事件"))
 		drawer_content.add_child(_make_feed_card(
 			str(director_event_report.get("event_id", "导演事件")),
 			"后续选项: %s" % str(director_event_report.get("follow_up_options", []).size()),
@@ -810,9 +812,9 @@ func _build_advisor_panel() -> void:
 		))
 	var director_intervention_report: Dictionary = GameState.world_data.get("director_intervention_report", {})
 	if not director_intervention_report.is_empty():
-		drawer_content.add_child(_make_section_title("导演干预 API"))
+		drawer_content.add_child(_make_section_title("导演干预"))
 		drawer_content.add_child(_make_api_report_card(
-			"导演干预 API",
+			"导演干预",
 			"干预编号: %s / 玩家感知: %s" % [
 				str(director_intervention_report.get("intervention_id", "")),
 				str(director_intervention_report.get("player_perception", "SUBTLE"))
@@ -821,7 +823,7 @@ func _build_advisor_panel() -> void:
 		))
 	var narrative_generation_report: Dictionary = GameState.world_data.get("narrative_generation_report", {})
 	if not narrative_generation_report.is_empty():
-		drawer_content.add_child(_make_section_title("叙事生成 API"))
+		drawer_content.add_child(_make_section_title("叙事生成"))
 		drawer_content.add_child(_make_feed_card(
 			"叙事情报简报",
 			str(narrative_generation_report.get("tone_analysis", "")),
@@ -898,7 +900,6 @@ func _build_system_panel(system: Dictionary) -> void:
 			drawer_content.add_child(_make_building_card(building))
 			var building_actions: HBoxContainer = _action_row()
 			building_actions.add_child(_make_action_button("加入队列", GameState.queue_structure.bind(system.get("id", ""), building.get("type", ""))))
-			building_actions.add_child(_make_action_button("后端校验", GameState.request_construction_validation.bind(system.get("id", ""), building.get("type", ""), "BUILDING")))
 			drawer_content.add_child(building_actions)
 		var has_shipyard: bool = false
 		for building: Dictionary in system.get("buildings", []):
@@ -918,7 +919,6 @@ func _build_system_panel(system: Dictionary) -> void:
 				var ship_actions: HBoxContainer = _action_row()
 				ship_actions.add_child(_make_action_button("建造%s" % InitialDataScript.ship_labels().get(ship_type, ship_type), GameState.queue_ship.bind(system.get("id", ""), ship_type)))
 				ship_actions.add_child(_make_action_button("排队3艘%s" % InitialDataScript.ship_labels().get(ship_type, ship_type), GameState.queue_ship_batch.bind(system.get("id", ""), ship_type, 3)))
-				ship_actions.add_child(_make_action_button("后端校验", GameState.request_construction_validation.bind(system.get("id", ""), ship_type, "SHIP")))
 				drawer_content.add_child(ship_actions)
 	var system_actions: HBoxContainer = _action_row()
 	if GameState.selected_fleet_id != "":
@@ -956,54 +956,36 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 			"当前任务: %s" % GameLogicScript.fleet_mission_label(str(fleet.get("mission", "IDLE")))
 		]
 	))
+	drawer_content.add_child(_make_section_title("任务"))
 	var mission_row_one: HBoxContainer = _action_row()
-	mission_row_one.add_child(_make_action_button("待命", GameState.set_selected_fleet_mission.bind("IDLE")))
-	mission_row_one.add_child(_make_action_button("探索", GameState.set_selected_fleet_mission.bind("EXPLORE")))
-	mission_row_one.add_child(_make_action_button("殖民", GameState.set_selected_fleet_mission.bind("COLONIZE")))
+	mission_row_one.add_child(_make_action_button("待命", GameState.set_selected_fleet_mission.bind("IDLE"), "neutral"))
+	mission_row_one.add_child(_make_action_button("探索", GameState.set_selected_fleet_mission.bind("EXPLORE"), "primary"))
+	mission_row_one.add_child(_make_action_button("殖民", GameState.set_selected_fleet_mission.bind("COLONIZE"), "accent"))
 	drawer_content.add_child(mission_row_one)
 	var mission_row_two: HBoxContainer = _action_row()
-	mission_row_two.add_child(_make_action_button("驻防", GameState.set_selected_fleet_mission.bind("GUARD")))
-	mission_row_two.add_child(_make_action_button("打击", GameState.set_selected_fleet_mission.bind("STRIKE")))
+	mission_row_two.add_child(_make_action_button("驻防", GameState.set_selected_fleet_mission.bind("GUARD"), "neutral"))
+	mission_row_two.add_child(_make_action_button("打击", GameState.set_selected_fleet_mission.bind("STRIKE"), "danger"))
 	drawer_content.add_child(mission_row_two)
-	var organization_row: HBoxContainer = _action_row()
-	organization_row.add_child(_make_action_button("拆分舰队", GameState.split_selected_fleet))
-	organization_row.add_child(_make_action_button("合并本星系舰队", GameState.merge_player_fleets_at_selected_system))
-	drawer_content.add_child(organization_row)
 	for ship: Dictionary in fleet.get("ships", []):
 		drawer_content.add_child(_make_fleet_ship_card(ship))
-	drawer_content.add_child(_make_section_title("可达星系"))
+	drawer_content.add_child(_make_section_title("移动"))
 	for route: Dictionary in GameState.get_reachable_system_details(fleet.get("id", "")):
 		var system_id: String = str(route.get("systemId", ""))
 		var system: Dictionary = GameState.get_system_by_id(system_id)
 		var fits_bandwidth: bool = bool(route.get("fitsBandwidth", true))
 		drawer_content.add_child(_make_route_card(route, system, fits_bandwidth))
 		var row: HBoxContainer = _action_row()
-		row.add_child(_make_action_button(system.get("name", system_id), GameState.select_system.bind(system_id)))
-		var move_button: Button = _make_action_button("移动", GameState.move_selected_fleet.bind(system_id))
+		row.add_child(_make_action_button(system.get("name", system_id), GameState.select_system.bind(system_id), "neutral"))
+		var move_button: Button = _make_action_button("移动", GameState.move_selected_fleet.bind(system_id), "primary")
 		move_button.disabled = not fits_bandwidth or int(fleet.get("movementCooldown", 0)) > 0
 		row.add_child(move_button)
-		row.add_child(_make_action_button("后端校验", GameState.request_fleet_move_validation.bind(system_id)))
-		if system.get("visibilityLevel", "") != "FULL":
-			row.add_child(_make_action_button("探索", GameState.explore_system.bind(system_id)))
 		drawer_content.add_child(row)
-	var fleet_move_report: Dictionary = GameState.world_data.get("fleet_move_report", {})
-	if not fleet_move_report.is_empty():
-		drawer_content.add_child(_make_section_title("舰队调动 API"))
-		drawer_content.add_child(_make_api_report_card(
-			"舰队调动 API",
-			"状态: %s / 模式: %s / ETA: %s 回合 / 能耗: %s" % [
-				str(fleet_move_report.get("status", "INVALID_REQUEST")),
-				str(fleet_move_report.get("movement_mode", "NORMAL")),
-				str(fleet_move_report.get("estimated_arrival_turns", 0)),
-				str(fleet_move_report.get("energy_cost", 0))
-			],
-			[
-				"目标校验: %s" % str(fleet_move_report.get("reason", "")),
-				"路径: %s" % " -> ".join(fleet_move_report.get("path_segments", [])),
-				"可达目标: %s" % ", ".join(fleet_move_report.get("reachable_targets", []))
-			] + fleet_move_report.get("warning_messages", [])
-		))
-	drawer_content.add_child(_make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", ""))))
+	drawer_content.add_child(_make_section_title("后勤维护"))
+	var support_row: HBoxContainer = _action_row()
+	support_row.add_child(_make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "primary"))
+	support_row.add_child(_make_action_button("拆分舰队", GameState.split_selected_fleet, "neutral"))
+	support_row.add_child(_make_action_button("合并本星系舰队", GameState.merge_player_fleets_at_selected_system, "accent"))
+	drawer_content.add_child(support_row)
 
 func _make_building_card(building: Dictionary) -> PanelContainer:
 	var card: PanelContainer = BUILDING_CARD_SCENE.instantiate()
@@ -1031,19 +1013,18 @@ func _make_tech_card(tech: Dictionary, researching: bool) -> PanelContainer:
 	card.get_node("Content/Description").text = str(tech.get("description", ""))
 	var meta_label: Label = card.get_node("Content/Meta")
 	meta_label.text = "研究时间: %s 回合 / 研究成本: %s" % [str(tech.get("researchTime", 0)), str(tech.get("cost", 0))]
-	var details: VBoxContainer = card.get_node("Content/Details")
+	var effects_list: VBoxContainer = card.get_node("Content/Columns/EffectsColumn/EffectsList")
+	var unlocks_list: VBoxContainer = card.get_node("Content/Columns/UnlocksColumn/UnlocksList")
 	if researching:
-		var progress_line: Label = INFO_LINE_SCENE.instantiate()
-		progress_line.text = "当前进度: %.0f%%" % float(tech.get("progress", 0.0))
-		details.add_child(progress_line)
+		effects_list.add_child(_make_rich_info_line("当前进度: %.0f%%" % float(tech.get("progress", 0.0))))
 	for effect: String in tech.get("effects", []):
-		var effect_line: Label = INFO_LINE_SCENE.instantiate()
-		effect_line.text = "加成: %s" % effect
-		details.add_child(effect_line)
+		effects_list.add_child(_make_rich_info_line("• %s" % effect))
 	for unlock_name: String in tech.get("unlocks", []):
-		var unlock_line: Label = INFO_LINE_SCENE.instantiate()
-		unlock_line.text = "解锁: %s" % unlock_name
-		details.add_child(unlock_line)
+		unlocks_list.add_child(_make_rich_info_line("• %s" % unlock_name, Color("8BE9FD")))
+	if effects_list.get_child_count() == 0:
+		effects_list.add_child(_make_rich_info_line("• 无直接加成"))
+	if unlocks_list.get_child_count() == 0:
+		unlocks_list.add_child(_make_rich_info_line("• 无新增解锁", Color("8BE9FD")))
 	return card
 
 
@@ -1063,12 +1044,73 @@ func _make_resource_chip(title: String, amount: int, rate: int) -> PanelContaine
 	var rate_text: String = _signed_int_text(rate)
 	return _make_chip(title, "%s (%s)" % [str(amount), rate_text])
 
-func _make_action_button(label: String, callable: Callable) -> Button:
+func _make_action_button(label: String, callable: Callable, variant: String = "default") -> Button:
 	var button: Button = ACTION_BUTTON_SCENE.instantiate()
 	button.text = label
+	_apply_button_variant(button, variant)
 	if callable.is_valid():
 		button.pressed.connect(callable)
 	return button
+
+func _make_rich_info_line(text: String, accent_color: Color = Color("FFD989")) -> RichTextLabel:
+	var label: RichTextLabel = RichTextLabel.new()
+	label.bbcode_enabled = true
+	label.fit_content = true
+	label.scroll_active = false
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("normal_font_size", 14)
+	label.add_theme_color_override("default_color", Color("E8EEFF"))
+	label.text = _highlight_numeric_segments(text, accent_color)
+	return label
+
+func _highlight_numeric_segments(text: String, accent_color: Color = Color("FFD989")) -> String:
+	var regex := RegEx.new()
+	regex.compile("([+-]?\\d+(?:\\.\\d+)?(?:%| 回合| 生命| 伤害| 速度| 人口| 稳定度| 矿产| 工业| 能源| 级)?)")
+	var color_code: String = accent_color.to_html(false)
+	var result: String = text
+	var matches: Array[RegExMatch] = regex.search_all(text)
+	for index: int in range(matches.size() - 1, -1, -1):
+		var match: RegExMatch = matches[index]
+		var start: int = match.get_start()
+		var finish: int = match.get_end()
+		var segment: String = result.substr(start, finish - start)
+		result = "%s[color=#%s]%s[/color]%s" % [result.substr(0, start), color_code, segment, result.substr(finish)]
+	return result
+
+func _apply_button_variant(button: Button, variant: String) -> void:
+	var normal_color: Color = Color("27304A")
+	var hover_color: Color = Color("324064")
+	var pressed_color: Color = Color("5B6FB2")
+	var border_color: Color = Color("6278B8")
+	match variant:
+		"primary":
+			normal_color = Color("335CFF")
+			hover_color = Color("4B70FF")
+			pressed_color = Color("2749CC")
+			border_color = Color("9DB1FF")
+		"accent":
+			normal_color = Color("145B61")
+			hover_color = Color("1A7880")
+			pressed_color = Color("0F4449")
+			border_color = Color("7EE7F2")
+		"danger":
+			normal_color = Color("6E2736")
+			hover_color = Color("8A3244")
+			pressed_color = Color("541C28")
+			border_color = Color("FF9AAE")
+		"neutral":
+			normal_color = Color("202839")
+			hover_color = Color("2A3448")
+			pressed_color = Color("18202D")
+			border_color = Color("7484A8")
+	var normal_style: StyleBoxFlat = _button_style(normal_color, border_color, 14)
+	var hover_style: StyleBoxFlat = _button_style(hover_color, border_color.lightened(0.12), 14)
+	var pressed_style: StyleBoxFlat = _button_style(pressed_color, border_color, 14)
+	button.add_theme_stylebox_override("normal", normal_style)
+	button.add_theme_stylebox_override("hover", hover_style)
+	button.add_theme_stylebox_override("pressed", pressed_style)
+	button.add_theme_stylebox_override("focus", hover_style)
 
 func _open_center_modal(title: String, subtitle: String, builder: Callable) -> void:
 	_modal_payload = {
@@ -1125,9 +1167,9 @@ func _open_proposal_modal(proposal: Dictionary) -> void:
 		func() -> void:
 			modal_content.add_child(_make_proposal_card(proposal))
 			var action_row: HBoxContainer = _action_row()
-			action_row.add_child(_make_action_button("接受提案", GameState.accept_diplomatic_proposal.bind(proposal.get("id", ""))))
-			action_row.add_child(_make_action_button("拒绝提案", GameState.reject_diplomatic_proposal.bind(proposal.get("id", ""))))
-			action_row.add_child(_make_action_button("AI评估", GameState.request_proposal_evaluation.bind(proposal.get("id", ""))))
+			action_row.add_child(_make_action_button("接受提案", GameState.accept_diplomatic_proposal.bind(proposal.get("id", "")), "primary"))
+			action_row.add_child(_make_action_button("拒绝提案", GameState.reject_diplomatic_proposal.bind(proposal.get("id", "")), "danger"))
+			action_row.add_child(_make_action_button("战略评估", GameState.request_proposal_evaluation.bind(proposal.get("id", "")), "accent"))
 			modal_content.add_child(action_row)
 	)
 
@@ -1142,17 +1184,12 @@ func _open_faction_modal(faction: Dictionary, relation: Dictionary, active_treat
 				for snapshot: Dictionary in history:
 					trend_parts.append("T%s:%s/%s/%s" % [str(snapshot.get("turn", 0)), str(snapshot.get("trust", 0)), str(snapshot.get("fear", 0)), str(snapshot.get("memoryImpact", 0))])
 				modal_content.add_child(_make_trend_card("关系趋势", "信任/恐惧/记忆: %s" % " -> ".join(trend_parts)))
-			var row_one: HBoxContainer = _action_row()
-			row_one.add_child(_make_action_button("贸易往来", GameState.trade_with_faction.bind(faction.get("id", ""))))
-			row_one.add_child(_make_action_button("施压交涉", _threat_and_request.bind(faction.get("id", ""))))
-			row_one.add_child(_make_action_button("友好致函", GameState.request_diplomatic_message.bind(faction.get("id", ""), "friendly")))
-			modal_content.add_child(row_one)
-			var row_two: HBoxContainer = _action_row()
-			row_two.add_child(_make_action_button("互不侵犯", GameState.propose_treaty.bind(faction.get("id", ""), "NON_AGGRESSION")))
-			row_two.add_child(_make_action_button("研究协定", GameState.propose_treaty.bind(faction.get("id", ""), "RESEARCH_ACCORD")))
-			row_two.add_child(_make_action_button("结成同盟", GameState.propose_treaty.bind(faction.get("id", ""), "ALLIANCE")))
-			modal_content.add_child(row_two)
-			modal_content.add_child(_make_section_title("玩家自由交流"))
+			modal_content.add_child(_make_section_title("常用外交文本"))
+			modal_content.add_child(_make_info_card([
+				"点击下方预设会先填入草稿框，你可以再微调措辞后发送。",
+				"公开适合表态，限制或加密更适合交换条件与试探底线。"
+			]))
+			modal_content.add_child(_make_section_title("拟定外交照会"))
 			modal_content.add_child(_make_diplomacy_composer(faction.get("id", "")))
 	)
 
@@ -1196,6 +1233,11 @@ func _make_status_card(title: String, lines: Array) -> PanelContainer:
 func _make_diplomacy_composer(faction_id: String) -> VBoxContainer:
 	var composer: VBoxContainer = DIPLOMACY_COMPOSER_SCENE.instantiate()
 	var draft_box: TextEdit = composer.get_node("DraftBox")
+	var preset_wrap: FlowContainer = composer.get_node("PresetWrap")
+	for preset: Dictionary in _diplomacy_presets(faction_id):
+		var preset_button: Button = _make_action_button(str(preset.get("label", "预设")), Callable(), str(preset.get("variant", "neutral")))
+		preset_button.pressed.connect(_apply_diplomacy_preset.bind(draft_box, faction_id, str(preset.get("template", ""))))
+		preset_wrap.add_child(preset_button)
 	draft_box.text = GameState.get_diplomatic_draft(faction_id)
 	draft_box.text_changed.connect(_on_draft_text_changed.bind(draft_box, faction_id))
 	var visibility_selector: OptionButton = composer.get_node("Controls/VisibilitySelector")
@@ -1210,6 +1252,44 @@ func _make_diplomacy_composer(faction_id: String) -> VBoxContainer:
 	var send_button: Button = composer.get_node("Controls/SendButton")
 	send_button.pressed.connect(GameState.send_player_message.bind(faction_id))
 	return composer
+
+func _diplomacy_presets(faction_id: String) -> Array[Dictionary]:
+	var faction: Dictionary = GameState.get_faction_by_id(faction_id)
+	var faction_name: String = str(faction.get("name", "贵方"))
+	return [
+		{
+			"label": "友好试探",
+			"variant": "accent",
+			"template": "致 %s：我们希望先就边境局势与近期动向交换看法，若贵方愿意，也可安排一次更稳定的常态沟通。" % faction_name
+		},
+		{
+			"label": "贸易互利",
+			"variant": "primary",
+			"template": "致 %s：我方希望推动一轮互利贸易，愿以稳定资源交换为基础，讨论一份对双方都可持续的合作安排。" % faction_name
+		},
+		{
+			"label": "科研合作",
+			"variant": "neutral",
+			"template": "致 %s：若贵方认可，我们愿讨论阶段性科研协作，先从低敏感领域开始，逐步建立互信与成果共享机制。" % faction_name
+		},
+		{
+			"label": "边境降温",
+			"variant": "neutral",
+			"template": "致 %s：边境紧张对双方都没有益处。我方建议先降低前沿对抗强度，并建立一次性风险通报渠道，避免误判升级。" % faction_name
+		},
+		{
+			"label": "强硬警告",
+			"variant": "danger",
+			"template": "致 %s：贵方近期举动已明显触及我方安全底线。若局势继续恶化，我方将采取对等反制措施，但仍保留通过谈判降温的空间。" % faction_name
+		}
+	]
+
+func _apply_diplomacy_preset(editor: TextEdit, faction_id: String, template: String) -> void:
+	editor.text = template
+	editor.grab_focus()
+	editor.set_caret_line(editor.get_line_count() - 1)
+	editor.set_caret_column(editor.get_line(editor.get_caret_line()).length())
+	GameState.set_diplomatic_draft(faction_id, template)
 
 func _make_route_card(route: Dictionary, system: Dictionary, fits_bandwidth: bool) -> PanelContainer:
 	var card: PanelContainer = ROUTE_CARD_SCENE.instantiate()
@@ -1500,10 +1580,19 @@ func _button_style(fill: Color, border: Color, radius: int) -> StyleBoxFlat:
 func _configure_tab_button(button: Button, active: bool) -> void:
 	button.button_pressed = active
 	if active:
+		var active_style: StyleBoxFlat = _button_style(Color("C8B7FF"), Color("C8B7FF"), 16)
+		var active_hover_style: StyleBoxFlat = _button_style(Color("DDD3FF"), Color("E8E0FF"), 16)
+		var active_pressed_style: StyleBoxFlat = _button_style(Color("A891F7"), Color("C8B7FF"), 16)
 		button.add_theme_color_override("font_color", Color("0B0C15"))
-		button.add_theme_stylebox_override("normal", _button_style(Color("C8B7FF"), Color("C8B7FF"), 16))
+		button.add_theme_stylebox_override("normal", active_style)
+		button.add_theme_stylebox_override("hover", active_hover_style)
+		button.add_theme_stylebox_override("pressed", active_pressed_style)
+		button.add_theme_stylebox_override("focus", active_hover_style)
 	else:
 		button.remove_theme_stylebox_override("normal")
+		button.remove_theme_stylebox_override("hover")
+		button.remove_theme_stylebox_override("pressed")
+		button.remove_theme_stylebox_override("focus")
 		button.remove_theme_color_override("font_color")
 
 func _era_name(era_key: String) -> String:

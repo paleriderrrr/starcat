@@ -28,21 +28,18 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "时间线标题"
 
 [node name="Meta" type="Label" parent="Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "摘要信息"
 
 [node name="Body" type="RichTextLabel" parent="Content"]
 layout_mode = 2
 theme_override_colors/default_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
@@ -52,7 +49,6 @@ text = "正文"
 layout_mode = 2
 theme_override_colors/default_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 bbcode_enabled = true
 fit_content = true
 scroll_active = false

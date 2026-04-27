@@ -29,7 +29,6 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "建筑名称"
 
 [node name="Description" type="Label" parent="Content"]
@@ -37,7 +36,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "建筑描述"
 
 [node name="Cost" type="Label" parent="Content"]
@@ -45,7 +43,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "建造成本"
 
 [node name="Production" type="Label" parent="Content"]
@@ -53,7 +50,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "产出"
 
 [node name="Maintenance" type="Label" parent="Content"]
@@ -61,7 +57,6 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "维护费"
 
 [node name="Housing" type="Label" parent="Content"]
@@ -69,5 +64,4 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
-text_overrun_behavior = 3
 text = "住房"

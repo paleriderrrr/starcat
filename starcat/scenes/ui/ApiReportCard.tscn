@@ -30,7 +30,6 @@ theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 18
 text = "API 报告"
 autowrap_mode = 3
-text_overrun_behavior = 3
 
 [node name="Summary" type="RichTextLabel" parent="Content"]
 layout_mode = 2

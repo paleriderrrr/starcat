@@ -107,12 +107,14 @@ size_flags_horizontal = 3
 
 [node name="DrawerTitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox" unique_id=1572680833]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "战局"
 autowrap_mode = 3
 
 [node name="DrawerSubtitle" type="Label" parent="Root/RightDrawer/Margin/DrawerVBox/DrawerHeader/TitleBox" unique_id=625947452]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 text = "通过底部导航切换不同系统面板"
 autowrap_mode = 3
 
@@ -177,12 +179,14 @@ size_flags_horizontal = 3
 
 [node name="ModalTitle" type="Label" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header/TitleBox" unique_id=274795908]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
 theme_override_font_sizes/font_size = 28
 text = "详情"
 autowrap_mode = 3
 
 [node name="ModalSubtitle" type="Label" parent="Root/CenterModalOverlay/CenterModal/Margin/ModalVBox/Header/TitleBox" unique_id=1892726054]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 text = "查看完整内容"
 autowrap_mode = 3
 
