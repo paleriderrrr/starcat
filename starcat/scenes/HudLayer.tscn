@@ -243,12 +243,6 @@ layout_mode = 2
 toggle_mode = true
 text = "通讯中心"
 
-[node name="AdvisorButton" parent="Root/BottomTabs" unique_id=758569910 instance=ExtResource("3_button")]
-custom_minimum_size = Vector2(128, 52)
-layout_mode = 2
-toggle_mode = true
-text = "AI顾问"
-
 [node name="FleetTabsSpacer" type="Control" parent="Root/BottomTabs" unique_id=1514038941]
 custom_minimum_size = Vector2(16, 1)
 layout_mode = 2

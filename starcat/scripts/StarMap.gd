@@ -183,18 +183,16 @@ func _make_label(text: String, offset: Vector3, compact: bool = false) -> Label3
 	label.position = offset
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.modulate = Color("F8F7FF")
-	label.pixel_size = 0.02 if compact else 0.024
-	label.font_size = 60 if compact else 76
-	label.outline_size = 8
+	label.pixel_size = 0.012 if compact else 0.014
+	label.font_size = 34 if compact else 42
+	label.outline_size = 4
 	return label
 
 func _system_label_offset(compact: bool = false) -> Vector3:
-	return Vector3(-2.55 if compact else -2.75, 1.35 if compact else 2.35, 0.0)
+	return Vector3(0.0, 1.5 if compact else 2.1, 0.0)
 
 func _fleet_label_offset(slot: int) -> Vector3:
-	var row: int = slot / 2
-	var side: float = 1.0 if slot % 2 == 0 else -1.0
-	return Vector3(2.3 + side * 0.45 * float(row), 2.65 + 0.95 * float(row), 0.0)
+	return Vector3(0.0, 2.55 + 0.62 * float(slot), 0.0)
 
 func _get_owner_color(owner_id: Variant) -> Color:
 	if owner_id == null:

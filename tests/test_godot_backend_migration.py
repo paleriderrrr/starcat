@@ -52,7 +52,6 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn("func check_service_health()", api_client_source)
         self.assertNotIn("signal health_checked(", api_client_source)
         self.assertNotIn("func check_health()", api_client_source)
-        self.assertIn('"服务状态: %s" % GameState.service_status', hud_source)
         self.assertNotIn("backend_status", hud_source)
 
     def test_hud_drawer_uses_full_height_anchor_layout(self) -> None:
@@ -64,11 +63,28 @@ class GodotBackendMigrationTests(unittest.TestCase):
 
     def test_star_map_labels_are_scaled_for_readability(self) -> None:
         star_map_source = _read_text("starcat/scripts/StarMap.gd")
-        self.assertIn("label.pixel_size = 0.02 if compact else 0.024", star_map_source)
-        self.assertIn("label.font_size = 60 if compact else 76", star_map_source)
+        self.assertIn("label.pixel_size = 0.012 if compact else 0.014", star_map_source)
+        self.assertIn("label.font_size = 34 if compact else 42", star_map_source)
         self.assertIn('_make_label(str(system.get("name", "")), _system_label_offset(false))', star_map_source)
         self.assertIn('_make_label(GameState.get_owner_name(system.get("ownerId", null)), _system_label_offset(true), true)', star_map_source)
         self.assertIn('_make_label(str(fleet.get("name", "")), _fleet_label_offset(fleet_slot), true)', star_map_source)
+
+    def test_bottom_tabs_open_large_center_modal_and_remove_advisor_entry(self) -> None:
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+        hud_scene = _read_text("starcat/scenes/HudLayer.tscn")
+
+        self.assertNotIn('"ADVISOR"', hud_source)
+        self.assertNotIn('"AI顾问"', hud_source)
+        self.assertNotIn("advisor_button", hud_source)
+        self.assertNotIn("AdvisorButton", hud_scene)
+        self.assertIn('func _open_global_tab_modal(tab_name: String) -> void:', hud_source)
+        self.assertIn("_open_global_tab_modal(tab_name)", hud_source)
+        self.assertIn('right_drawer.visible = not selected_fleet.is_empty() or not selected_system.is_empty()', hud_source)
+        self.assertIn('var modal_half_width: float = clampf(viewport_width * 0.42, 520.0, 760.0)', hud_source)
+        self.assertIn('var modal_half_height: float = clampf(viewport_size.y * 0.42, 300.0, 460.0)', hud_source)
+        self.assertNotIn("advisor_changed.connect", hud_source)
+        self.assertNotIn("func _open_advisor_modal", hud_source)
+        self.assertNotIn("func _on_advisor_changed", hud_source)
 
     def test_top_bar_chip_layout_and_titles_are_initialized(self) -> None:
         chip_scene = _read_text("starcat/scenes/ui/Chip.tscn")
@@ -150,8 +166,8 @@ class GodotBackendMigrationTests(unittest.TestCase):
     def test_diplomacy_panel_uses_grouped_action_sections_and_humanized_labels(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
 
-        self.assertIn('drawer_content.add_child(_make_section_title("外交对象"))', hud_source)
-        self.assertIn('drawer_content.add_child(_make_section_title("局势简报"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("外交对象"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("局势简报"))', hud_source)
         self.assertIn('modal_content.add_child(_make_section_title("常用外交文本"))', hud_source)
         self.assertIn('modal_content.add_child(_make_diplomacy_composer(faction.get("id", "")))', hud_source)
         self.assertNotIn('modal_content.add_child(_make_section_title("关系操作"))', hud_source)
@@ -192,9 +208,9 @@ class GodotBackendMigrationTests(unittest.TestCase):
     def test_fleet_panel_groups_actions_into_task_movement_and_support(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
 
-        self.assertIn('drawer_content.add_child(_make_section_title("任务"))', hud_source)
-        self.assertIn('drawer_content.add_child(_make_section_title("移动"))', hud_source)
-        self.assertIn('drawer_content.add_child(_make_section_title("后勤维护"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("任务"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("移动"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("后勤维护"))', hud_source)
         self.assertNotIn('row.add_child(_make_action_button("探索", GameState.explore_system.bind(system_id)))', hud_source)
         self.assertIn('support_row.add_child(_make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "primary"))', hud_source)
 
@@ -208,6 +224,10 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('marker.add_child(_make_label(str(fleet.get("name", "")), _fleet_label_offset(fleet_slot), true))', star_map_source)
         self.assertIn('func _system_label_offset(compact: bool = false) -> Vector3:', star_map_source)
         self.assertIn('func _fleet_label_offset(slot: int) -> Vector3:', star_map_source)
+        self.assertIn('return Vector3(0.0, 1.5 if compact else 2.1, 0.0)', star_map_source)
+        self.assertIn('return Vector3(0.0, 2.55 + 0.62 * float(slot), 0.0)', star_map_source)
+        self.assertNotIn('var side: float = 1.0 if slot % 2 == 0 else -1.0', star_map_source)
+        self.assertNotIn('2.3 + side * 0.45 * float(row)', star_map_source)
 
 
 if __name__ == "__main__":
