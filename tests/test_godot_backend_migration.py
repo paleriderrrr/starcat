@@ -227,6 +227,34 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('_open_global_tab_modal(GameState.active_tab)', hud_source)
         self.assertIn('refresh()\n\t_refresh_visible_panels()', hud_source)
 
+    def test_bridge_ui_assets_are_installed_into_hud_shell_and_shared_controls(self) -> None:
+        expected_assets = [
+            "starcat/assets/ui/bridge/button_base.png",
+            "starcat/assets/ui/bridge/button_hover.png",
+            "starcat/assets/ui/bridge/button_pressed.png",
+            "starcat/assets/ui/bridge/button_disabled.png",
+            "starcat/assets/ui/bridge/chip_panel.png",
+            "starcat/assets/ui/bridge/panel_shell.png",
+            "starcat/assets/ui/bridge/panel_shell_strong.png",
+            "starcat/assets/ui/bridge/card_shell.png",
+            "starcat/assets/ui/bridge/card_shell_alert.png",
+            "starcat/assets/ui/bridge/tab_active.png",
+            "starcat/assets/ui/bridge/tab_idle.png",
+            "starcat/assets/ui/bridge/divider_glow.png",
+        ]
+
+        for relative_path in expected_assets:
+            self.assertTrue((ROOT / relative_path).exists(), relative_path)
+
+        action_button_scene = _read_text("starcat/scenes/ui/ActionButton.tscn")
+        chip_scene = _read_text("starcat/scenes/ui/Chip.tscn")
+        hud_scene = _read_text("starcat/scenes/HudLayer.tscn")
+
+        self.assertIn("assets/ui/bridge/button_base.png", action_button_scene)
+        self.assertIn("assets/ui/bridge/chip_panel.png", chip_scene)
+        self.assertIn("assets/ui/bridge/panel_shell_strong.png", hud_scene)
+        self.assertIn("assets/ui/bridge/divider_glow.png", hud_scene)
+
     def test_diplomatic_actions_flow_through_game_state_and_local_analysis_service(self) -> None:
         game_state_source = _read_text("starcat/scripts/autoload/GameState.gd")
         hud_source = _read_text("starcat/scripts/HudLayer.gd")

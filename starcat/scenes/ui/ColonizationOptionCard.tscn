@@ -1,60 +1,53 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
-[sub_resource type="StyleBoxFlat" id="1"]
-bg_color = Color(0.09, 0.1, 0.15, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.2, 0.254902, 0.360784, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-content_margin_left = 12.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/card_shell.png" id="1_card"]
+
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("1_card")
+texture_margin_left = 46.0
+texture_margin_top = 46.0
+texture_margin_right = 46.0
+texture_margin_bottom = 46.0
 
 [node name="ColonizationOptionCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")
 
 [node name="Content" type="VBoxContainer" parent="."]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.94902, 0.980392, 1, 1)
+theme_override_font_sizes/font_size = 18
 custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
-theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
 text = "殖民模式 / 回合"
 
 [node name="Description" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.870588, 0.917647, 0.972549, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text = "模式说明"
 
 [node name="Cost" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
 text = "花费"
 
 [node name="Stats" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
 text = "初始参数"
 
 [node name="Risk" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.870588, 0.917647, 0.972549, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
 text = "风险与说明"
