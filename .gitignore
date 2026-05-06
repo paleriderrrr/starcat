@@ -9,3 +9,6 @@ _tmp_docx_extract.txt
 
 # Python
 __pycache__/
+
+# Local worktrees
+.worktrees/
