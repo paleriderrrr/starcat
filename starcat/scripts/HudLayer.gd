@@ -1147,10 +1147,17 @@ func _open_faction_modal(faction: Dictionary, relation: Dictionary, active_treat
 			modal_content.add_child(_make_diplomacy_composer(faction.get("id", "")))
 	)
 
-func _make_section_title(text: String) -> Label:
-	var label: Label = SECTION_TITLE_SCENE.instantiate()
-	label.text = text
-	return label
+func _make_section_title(text: String) -> Control:
+	var section: Control = SECTION_TITLE_SCENE.instantiate()
+	var text_label: Label = section.get_node("Margin/Text")
+	text_label.text = text
+	return section
+
+func _make_info_line(text: String) -> Control:
+	var line_panel: Control = INFO_LINE_SCENE.instantiate()
+	var text_label: Label = line_panel.get_node("Margin/Text")
+	text_label.text = text
+	return line_panel
 
 func _make_info_card(lines: Array) -> PanelContainer:
 	var panel: PanelContainer = INFO_CARD_SCENE.instantiate()
@@ -1159,9 +1166,7 @@ func _make_info_card(lines: Array) -> PanelContainer:
 		var line: String = str(raw_line)
 		if line == "":
 			continue
-		var label: Label = INFO_LINE_SCENE.instantiate()
-		label.text = line
-		content.add_child(label)
+		content.add_child(_make_info_line(line))
 	return panel
 
 func _make_status_card(title: String, lines: Array) -> PanelContainer:
@@ -1171,9 +1176,7 @@ func _make_status_card(title: String, lines: Array) -> PanelContainer:
 	for raw_line: Variant in lines:
 		var line: String = str(raw_line)
 		if line != "":
-			var label: Label = INFO_LINE_SCENE.instantiate()
-			label.text = line
-			details.add_child(label)
+			details.add_child(_make_info_line(line))
 	return card
 
 func _make_diplomacy_composer(faction_id: String) -> VBoxContainer:
@@ -1389,9 +1392,7 @@ func _make_api_report_card(title: String, summary: String, details_lines: Array)
 		var line: String = str(line_value)
 		if line == "":
 			continue
-		var label: Label = INFO_LINE_SCENE.instantiate()
-		label.text = line
-		details.add_child(label)
+		details.add_child(_make_info_line(line))
 	return card
 
 func _make_posture_card(posture: Dictionary) -> PanelContainer:

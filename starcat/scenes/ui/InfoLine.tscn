@@ -1,7 +1,27 @@
-[gd_scene format=3]
+[gd_scene load_steps=3 format=3]
 
-[node name="InfoLine" type="Label"]
-custom_minimum_size = Vector2(0, 20)
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/info_line_panel.png" id="1_panel"]
+
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("1_panel")
+texture_margin_left = 38.0
+texture_margin_top = 38.0
+texture_margin_right = 38.0
+texture_margin_bottom = 38.0
+
+[node name="InfoLine" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 28)
+theme_override_styles/panel = SubResource("1")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 5
+
+[node name="Text" type="Label" parent="Margin"]
+custom_minimum_size = Vector2(0, 18)
 layout_mode = 2
 autowrap_mode = 3
 text = "信息行"

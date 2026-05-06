@@ -218,6 +218,9 @@ class GodotBackendMigrationTests(unittest.TestCase):
 
         self.assertIn('func _diplomacy_presets(faction_id: String) -> Array[Dictionary]:', hud_source)
         self.assertIn('func _apply_diplomacy_preset(editor: TextEdit, faction_id: String, template: String) -> void:', hud_source)
+        self.assertIn('func _make_info_line(text: String) -> Control:', hud_source)
+        self.assertIn('section.get_node("Margin/Text")', hud_source)
+        self.assertIn('line_panel.get_node("Margin/Text")', hud_source)
         self.assertIn('var preset_wrap: FlowContainer = composer.get_node("PresetWrap")', hud_source)
         self.assertIn('preset_button.pressed.connect(_apply_diplomacy_preset.bind(draft_box, faction_id, str(preset.get("template", ""))))', hud_source)
         self.assertIn('"限制舰队逼近"', hud_source)
@@ -225,6 +228,8 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('"科研互换"', hud_source)
         self.assertIn('[node name="PresetWrap" type="FlowContainer" parent="."]', composer_scene)
         self.assertIn('custom_minimum_size = Vector2(0, 96)', composer_scene)
+        self.assertIn('theme_override_styles/normal = SubResource("1")', composer_scene)
+        self.assertIn('theme_override_styles/focus = SubResource("2")', composer_scene)
 
     def test_hud_rebuilds_open_global_modal_immediately_after_state_changes(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
@@ -245,6 +250,10 @@ class GodotBackendMigrationTests(unittest.TestCase):
             "starcat/assets/ui/bridge/panel_shell_strong.png",
             "starcat/assets/ui/bridge/card_shell.png",
             "starcat/assets/ui/bridge/card_shell_alert.png",
+            "starcat/assets/ui/bridge/section_title_panel.png",
+            "starcat/assets/ui/bridge/info_line_panel.png",
+            "starcat/assets/ui/bridge/input_panel.png",
+            "starcat/assets/ui/bridge/input_panel_focus.png",
             "starcat/assets/ui/bridge/tab_active.png",
             "starcat/assets/ui/bridge/tab_idle.png",
             "starcat/assets/ui/bridge/divider_glow.png",
@@ -256,11 +265,18 @@ class GodotBackendMigrationTests(unittest.TestCase):
         action_button_scene = _read_text("starcat/scenes/ui/ActionButton.tscn")
         chip_scene = _read_text("starcat/scenes/ui/Chip.tscn")
         hud_scene = _read_text("starcat/scenes/HudLayer.tscn")
+        section_title_scene = _read_text("starcat/scenes/ui/SectionTitle.tscn")
+        info_line_scene = _read_text("starcat/scenes/ui/InfoLine.tscn")
+        composer_scene = _read_text("starcat/scenes/ui/DiplomacyComposer.tscn")
 
         self.assertIn("assets/ui/bridge/button_base.png", action_button_scene)
         self.assertIn("assets/ui/bridge/chip_panel.png", chip_scene)
         self.assertIn("assets/ui/bridge/panel_shell_strong.png", hud_scene)
         self.assertIn("assets/ui/bridge/divider_glow.png", hud_scene)
+        self.assertIn("assets/ui/bridge/section_title_panel.png", section_title_scene)
+        self.assertIn("assets/ui/bridge/info_line_panel.png", info_line_scene)
+        self.assertIn("assets/ui/bridge/input_panel.png", composer_scene)
+        self.assertIn("assets/ui/bridge/input_panel_focus.png", composer_scene)
 
     def test_diplomatic_actions_flow_through_game_state_and_local_analysis_service(self) -> None:
         game_state_source = _read_text("starcat/scripts/autoload/GameState.gd")
