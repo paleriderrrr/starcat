@@ -216,6 +216,10 @@ func select_system(system_id: String) -> void:
 	selected_system_id = system_id
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
+func focus_system(system_id: String) -> void:
+	selected_system_id = system_id
+	selection_changed.emit(selected_system_id, selected_fleet_id)
+
 func select_fleet(fleet_id: String) -> void:
 	fleet_move_mode = false
 	selected_fleet_id = fleet_id
@@ -351,9 +355,13 @@ func colonize_system(system_id: String, mode: String = "STANDARD") -> void:
 func move_selected_fleet(system_id: String) -> void:
 	if selected_fleet_id == "":
 		return
+	var previous_system_id: String = str(get_fleet_by_id(selected_fleet_id).get("systemId", ""))
 	game_state = GameLogicScript.move_fleet(game_state, selected_fleet_id, system_id)
-	fleet_move_mode = false
-	selected_system_id = system_id
+	var updated_system_id: String = str(get_fleet_by_id(selected_fleet_id).get("systemId", previous_system_id))
+	var moved_successfully: bool = updated_system_id != "" and updated_system_id != previous_system_id
+	if moved_successfully:
+		fleet_move_mode = false
+	selected_system_id = updated_system_id if updated_system_id != "" else previous_system_id
 	state_changed.emit(game_state)
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 

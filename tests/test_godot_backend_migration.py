@@ -252,14 +252,31 @@ class GodotBackendMigrationTests(unittest.TestCase):
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
 
         self.assertIn('_panel_add(_make_section_title("任务"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("行动指令"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("机动与维护"))', hud_source)
+        self.assertIn('_panel_add(_make_section_title("编组与评估"))', hud_source)
+        self.assertIn('func _make_action_grid(buttons: Array[Button], columns: int = 2) -> GridContainer:', hud_source)
+        self.assertIn('button.custom_minimum_size = Vector2(0, 44)', hud_source)
         self.assertIn('_panel_add(_make_status_card("任务状态"', hud_source)
-        self.assertIn('_make_action_button("进入移动模式"', hud_source)
-        self.assertIn('_make_action_button("退出移动模式"', hud_source)
+        self.assertIn('_make_action_button("开始移动"', hud_source)
+        self.assertIn('_make_action_button("取消移动"', hud_source)
         self.assertIn('_make_action_button("修复舰队"', hud_source)
+        self.assertIn('_make_action_button("合并本地舰队"', hud_source)
+        self.assertIn('start_move_button.disabled = move_mode_active', hud_source)
+        self.assertIn('cancel_move_button.disabled = not move_mode_active', hud_source)
+        self.assertIn('repair_button.disabled = total_hp >= total_max_hp', hud_source)
+        self.assertIn('split_button.disabled = fleet.get("ships", []).size() < 2', hud_source)
+        self.assertIn('merge_button.disabled = GameState.get_player_fleets_in_system(str(fleet.get("systemId", ""))).size() < 2', hud_source)
         self.assertNotIn('_panel_add(_make_section_title("移动"))', hud_source)
         self.assertNotIn('_panel_add(_make_section_title("后勤维护"))', hud_source)
-        self.assertNotIn('row.add_child(_make_action_button("探索", GameState.explore_system.bind(system_id)))', hud_source)
-        self.assertIn('GameState.begin_fleet_move_mode.bind(fleet.get("id", ""))', hud_source)
+
+    def test_runtime_capture_path_opens_real_global_tab_modals(self) -> None:
+        main_source = _read_text("starcat/scripts/Main.gd")
+
+        self.assertIn('if hud_layer.has_method("_on_tab_pressed"):', main_source)
+        self.assertIn('hud_layer.call("_on_tab_pressed", "OBJECTIVES")', main_source)
+        self.assertIn('hud_layer.call("_on_tab_pressed", "COMMS")', main_source)
+        self.assertNotIn('GameState.set_active_tab("COMMS")', main_source)
 
     def test_star_map_uses_channel_based_label_avoidance(self) -> None:
         star_map_source = _read_text("starcat/scripts/StarMap.gd")
@@ -284,7 +301,47 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('func begin_fleet_move_mode(fleet_id: String = "") -> void:', game_state_source)
         self.assertIn('func cancel_fleet_move_mode() -> void:', game_state_source)
         self.assertIn('func try_move_selected_fleet_to_system(system_id: String) -> bool:', game_state_source)
+        self.assertIn('func focus_system(system_id: String) -> void:', game_state_source)
         self.assertIn('var fleet_move_mode: bool = false', game_state_source)
+
+    def test_fleet_route_buttons_separate_viewing_from_executing_movement(self) -> None:
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+        game_state_source = _read_text("starcat/scripts/autoload/GameState.gd")
+
+        self.assertIn('_make_action_button("查看%s" % system.get("name", system_id), GameState.focus_system.bind(system_id), "neutral")', hud_source)
+        self.assertIn('if GameState.fleet_move_mode:', hud_source)
+        self.assertIn('_make_action_button("跃迁至此", GameState.move_selected_fleet.bind(system_id), "primary")', hud_source)
+        self.assertNotIn('GameState.select_system.bind(system_id)', hud_source)
+        self.assertIn('var moved_successfully: bool = updated_system_id != "" and updated_system_id != previous_system_id', game_state_source)
+        self.assertIn('if moved_successfully:', game_state_source)
+        self.assertIn('fleet_move_mode = false', game_state_source)
+        self.assertIn('jump_button.disabled = not can_jump', hud_source)
+        self.assertIn('jump_button.tooltip_text = "当前航道容量不足，舰队规模超出上限。"', hud_source)
+        self.assertIn('jump_button.tooltip_text = "舰队仍在移动冷却中。"', hud_source)
+        self.assertIn('jump_button.tooltip_text = "能源不足，无法支付本次跃迁消耗。"', hud_source)
+
+    def test_objectives_and_fleet_panels_render_humanized_status_values(self) -> None:
+        hud_source = _read_text("starcat/scripts/HudLayer.gd")
+        api_source = _read_text("starcat/scripts/autoload/ApiClient.gd")
+
+        self.assertIn('"状态: %s" % _game_status_label(str(GameState.game_state.get("status", "PLAYING")))', hud_source)
+        self.assertIn('"胜利路径: %s" % _victory_path_label(GameState.game_state.get("victory_path", null))', hud_source)
+        self.assertIn('func _victory_path_label(value: Variant) -> String:', hud_source)
+        self.assertIn('func _game_status_label(status: String) -> String:', hud_source)
+        self.assertIn('func _charter_status_label(status: String) -> String:', hud_source)
+        self.assertIn('func _interception_status_label(status: String) -> String:', hud_source)
+        self.assertIn('func _fleet_readiness_label(readiness: String) -> String:', hud_source)
+        self.assertIn('func _message_type_label(message_type: String) -> String:', hud_source)
+        self.assertIn('return "未设定"', hud_source)
+        self.assertIn('"宪章表决: %s" % _charter_status_label(str(diplomacy_report.get("charter_status", "INACTIVE")))', hud_source)
+        self.assertIn('"通信截获状态: %s" % _interception_status_label(str(interception_report.get("status", "UNKNOWN")))', hud_source)
+        self.assertIn('"战备状态: %s" % _fleet_readiness_label(str(fleet_status_report.get("readiness", "CRITICAL")))', hud_source)
+        self.assertIn('"meta": _message_type_label(str(message.get("type", "SYSTEM"))),', hud_source)
+        self.assertIn('"fleet_status_fleet_id": fleet_id,', api_source)
+        self.assertIn('var fleet_status_fleet_id: String = str(GameState.world_data.get("fleet_status_fleet_id", ""))', hud_source)
+        self.assertIn('_panel_add(_make_api_report_card(', hud_source)
+        self.assertIn('"状态评估"', hud_source)
+        self.assertIn('if GameState.active_tab == "DIPLOMACY" or GameState.active_tab == "COMMS" or GameState.selected_fleet_id != "" or GameState.selected_system_id != "":', hud_source)
 
     def test_communications_panel_is_grouped_into_system_diplomatic_and_proposals(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")

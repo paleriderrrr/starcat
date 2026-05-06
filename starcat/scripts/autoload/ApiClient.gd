@@ -145,6 +145,7 @@ func request_ai_conversation(sender: Dictionary, target: Dictionary, relationshi
 func request_fleet_status(game_state: Dictionary, fleet_id: String) -> void:
 	_ensure_services()
 	world_query_received.emit({
+		"fleet_status_fleet_id": fleet_id,
 		"fleet_status_report": _analysis_service.query_fleet_status(game_state, fleet_id, true)
 	})
 

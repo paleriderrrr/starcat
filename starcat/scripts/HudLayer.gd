@@ -268,9 +268,9 @@ func _build_objectives_panel() -> void:
 		"当前目标",
 		[
 			"目标: %s" % str(GameState.game_state.get("objective", "")),
-			"状态: %s" % str(GameState.game_state.get("status", "PLAYING")),
+			"状态: %s" % _game_status_label(str(GameState.game_state.get("status", "PLAYING"))),
 			"飞升进度: %s/100" % str(GameState.game_state.get("ascension_progress", 0)),
-			"胜利路径: %s" % str(GameState.game_state.get("victory_path", "未达成"))
+			"胜利路径: %s" % _victory_path_label(GameState.game_state.get("victory_path", null))
 		]
 	))
 	_panel_add(_make_section_title("胜利进度"))
@@ -295,7 +295,7 @@ func _build_objectives_panel() -> void:
 				str(diplomatic_report.get("speaker_title", "未设立"))
 			],
 			"宪章表决: %s (%s/%s)" % [
-				str(diplomatic_report.get("charter_status", "INACTIVE")),
+				_charter_status_label(str(diplomatic_report.get("charter_status", "INACTIVE"))),
 				str(diplomatic_report.get("votes_for", 0)),
 				str(diplomatic_report.get("required_votes", 0))
 			],
@@ -305,7 +305,7 @@ func _build_objectives_panel() -> void:
 	_panel_add(_make_status_card(
 		"科技飞升",
 		[
-			"飞升阶段: %s" % str(science_report.get("phase_label", "未启动")),
+			"飞升阶段: %s" % _ascension_phase_label(str(science_report.get("phase_label", "INACTIVE"))),
 			"飞升进度: %s/100" % str(science_report.get("progress", 0)),
 			"阶段摘要: %s" % str(science_report.get("status_summary", "-")),
 			"奇观选址: %s" % str(science_report.get("best_site_name", "-"))
@@ -437,7 +437,7 @@ func _build_diplomacy_panel() -> void:
 	_panel_add(_make_status_card(
 		"通信截获状态",
 		[
-			"通信截获状态: %s" % interception_report.get("status", "未知"),
+			"通信截获状态: %s" % _interception_status_label(str(interception_report.get("status", "UNKNOWN"))),
 			"公开通信基础截获率: %s%%" % str(interception_report.get("base", 0)),
 			"限制级通信截获率: %s%%" % str(interception_report.get("restricted", 0)),
 			"秘密通信截获率: %s%%" % str(interception_report.get("secret", 0)),
@@ -449,7 +449,7 @@ func _build_diplomacy_panel() -> void:
 		[
 			"联合国: %s" % ("已成立" if bool(diplomacy_report.get("council_established", false)) else "未成立"),
 			"议长: %s" % str(diplomacy_report.get("speaker_title", "未设立")),
-			"宪章表决: %s" % str(diplomacy_report.get("charter_status", "INACTIVE")),
+			"宪章表决: %s" % _charter_status_label(str(diplomacy_report.get("charter_status", "INACTIVE"))),
 			"支持票: %s/%s" % [str(diplomacy_report.get("votes_for", 0)), str(diplomacy_report.get("required_votes", 0))]
 		]
 	))
@@ -577,7 +577,7 @@ func _build_communications_panel() -> void:
 	for message: Dictionary in GameState.game_state.get("messages", []).slice(0, 6):
 		system_entries.append({
 			"title": "T%s / %s" % [str(message.get("turn", 1)), str(message.get("title", "系统消息"))],
-			"meta": str(message.get("type", "SYSTEM")),
+			"meta": _message_type_label(str(message.get("type", "SYSTEM"))),
 			"summary": _truncate_text(str(message.get("content", "")), 96)
 		})
 	for report: Dictionary in GameState.get_recent_combat_reports().slice(0, 3):
@@ -748,28 +748,72 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 		]
 	))
 	_panel_add(_make_section_title("任务"))
-	var mission_row_one: HBoxContainer = _action_row()
-	mission_row_one.add_child(_make_action_button("待命", GameState.set_selected_fleet_mission.bind("IDLE"), "neutral"))
-	mission_row_one.add_child(_make_action_button("探索", GameState.set_selected_fleet_mission.bind("EXPLORE"), "primary"))
-	mission_row_one.add_child(_make_action_button("殖民", GameState.set_selected_fleet_mission.bind("COLONIZE"), "accent"))
-	mission_row_one.add_child(_make_action_button("驻防", GameState.set_selected_fleet_mission.bind("GUARD"), "neutral"))
-	_panel_add(mission_row_one)
-	var mission_row_two: HBoxContainer = _action_row()
-	mission_row_two.add_child(_make_action_button("打击", GameState.set_selected_fleet_mission.bind("STRIKE"), "danger"))
-	mission_row_two.add_child(_make_action_button("进入移动模式", GameState.begin_fleet_move_mode.bind(fleet.get("id", "")), "primary"))
-	mission_row_two.add_child(_make_action_button("退出移动模式", GameState.cancel_fleet_move_mode, "neutral"))
-	mission_row_two.add_child(_make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "accent"))
-	_panel_add(mission_row_two)
+	_panel_add(_make_info_card([
+		"选择一个任务组后会立即切换当前舰队指令。",
+		"移动模式开启后，直接点击星图中的可达星系即可跃迁。"
+	]))
+	_panel_add(_make_section_title("行动指令"))
+	_panel_add(_make_action_grid([
+		_make_action_button("待命", GameState.set_selected_fleet_mission.bind("IDLE"), "neutral"),
+		_make_action_button("探索", GameState.set_selected_fleet_mission.bind("EXPLORE"), "primary"),
+		_make_action_button("殖民", GameState.set_selected_fleet_mission.bind("COLONIZE"), "accent"),
+		_make_action_button("驻防", GameState.set_selected_fleet_mission.bind("GUARD"), "neutral"),
+		_make_action_button("打击", GameState.set_selected_fleet_mission.bind("STRIKE"), "danger")
+	], 2))
+	_panel_add(_make_section_title("机动与维护"))
+	var move_mode_active: bool = GameState.fleet_move_mode and GameState.selected_fleet_id == str(fleet.get("id", ""))
+	var start_move_button: Button = _make_action_button("开始移动", GameState.begin_fleet_move_mode.bind(fleet.get("id", "")), "primary")
+	start_move_button.disabled = move_mode_active
+	var cancel_move_button: Button = _make_action_button("取消移动", GameState.cancel_fleet_move_mode, "neutral")
+	cancel_move_button.disabled = not move_mode_active
+	var repair_button: Button = _make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "accent")
+	repair_button.disabled = total_hp >= total_max_hp
+	_panel_add(_make_action_grid([
+		start_move_button,
+		cancel_move_button,
+		repair_button
+	], 2))
 	_panel_add(_make_status_card("任务状态", [
 		"移动模式: %s" % ("已开启，点击星图中的可达星系即可跃迁。" if GameState.fleet_move_mode else "未开启"),
 		"可达星系: %s" % str(GameState.get_reachable_system_ids(fleet.get("id", "")).size()),
 		"当前驻留: %s" % GameState.get_system_by_id(fleet.get("systemId", "")).get("name", "")
 	]))
-	var mission_row_three: HBoxContainer = _action_row()
-	mission_row_three.add_child(_make_action_button("拆分舰队", GameState.split_selected_fleet, "neutral"))
-	mission_row_three.add_child(_make_action_button("合并本星系舰队", GameState.merge_player_fleets_at_selected_system, "accent"))
-	mission_row_three.add_child(_make_action_button("状态评估", GameState.request_selected_fleet_status, "accent"))
-	_panel_add(mission_row_three)
+	var fleet_status_fleet_id: String = str(GameState.world_data.get("fleet_status_fleet_id", ""))
+	var fleet_status_report: Dictionary = GameState.world_data.get("fleet_status_report", {})
+	if not fleet_status_report.is_empty() and fleet_status_fleet_id == str(fleet.get("id", "")):
+		var detail_lines: Array = [
+			"位置: %s" % str(fleet_status_report.get("location", "未知")),
+			"战备状态: %s" % _fleet_readiness_label(str(fleet_status_report.get("readiness", "CRITICAL")))
+		]
+		for ship_entry: Dictionary in fleet_status_report.get("unit_composition", []).slice(0, 4):
+			detail_lines.append("%s / %s / %s/%s 生命 / %s 伤害" % [
+				str(ship_entry.get("name", "舰船")),
+				str(ship_entry.get("type", "UNKNOWN")),
+				str(ship_entry.get("hp", 0)),
+				str(ship_entry.get("maxHp", 0)),
+				str(ship_entry.get("damage", 0))
+			])
+		_panel_add(_make_api_report_card(
+			"状态评估",
+			"任务: %s / 舰队强度: %s" % [
+				str(fleet_status_report.get("mission", "未知")),
+				str(fleet_status_report.get("strength", 0))
+			],
+			detail_lines
+		))
+	_panel_add(_make_section_title("编组与评估"))
+	var split_button: Button = _make_action_button("拆分舰队", GameState.split_selected_fleet, "neutral")
+	split_button.disabled = fleet.get("ships", []).size() < 2
+	var merge_button: Button = _make_action_button("合并本地舰队", GameState.merge_player_fleets_at_selected_system, "accent")
+	merge_button.disabled = GameState.get_player_fleets_in_system(str(fleet.get("systemId", ""))).size() < 2
+	var status_button: Button = _make_action_button("状态评估", GameState.request_selected_fleet_status, "accent")
+	_panel_add(_make_action_grid([
+		split_button,
+		merge_button,
+		status_button
+	], 2))
+	_panel_add(_make_section_title("可达航线"))
+	var player_energy: int = int(GameState.get_player_faction().get("resources", {}).get("energy", 0))
 	for ship: Dictionary in fleet.get("ships", []):
 		_panel_add(_make_fleet_ship_card(ship))
 	for route: Dictionary in GameState.get_reachable_system_details(fleet.get("id", "")):
@@ -778,7 +822,19 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 		var fits_bandwidth: bool = bool(route.get("fitsBandwidth", true))
 		_panel_add(_make_route_card(route, system, fits_bandwidth))
 		var row: HBoxContainer = _action_row()
-		row.add_child(_make_action_button(system.get("name", system_id), GameState.select_system.bind(system_id), "neutral"))
+		row.add_child(_make_action_button("查看%s" % system.get("name", system_id), GameState.focus_system.bind(system_id), "neutral"))
+		if GameState.fleet_move_mode:
+			var jump_button: Button = _make_action_button("跃迁至此", GameState.move_selected_fleet.bind(system_id), "primary")
+			var traversal_cost: int = int(route.get("traversalCost", 1))
+			var can_jump: bool = fits_bandwidth and int(fleet.get("movementCooldown", 0)) <= 0 and player_energy >= traversal_cost
+			jump_button.disabled = not can_jump
+			if not fits_bandwidth:
+				jump_button.tooltip_text = "当前航道容量不足，舰队规模超出上限。"
+			elif int(fleet.get("movementCooldown", 0)) > 0:
+				jump_button.tooltip_text = "舰队仍在移动冷却中。"
+			elif player_energy < traversal_cost:
+				jump_button.tooltip_text = "能源不足，无法支付本次跃迁消耗。"
+			row.add_child(jump_button)
 		_panel_add(row)
 
 func _make_building_card(building: Dictionary) -> PanelContainer:
@@ -824,6 +880,18 @@ func _make_tech_card(tech: Dictionary, researching: bool) -> PanelContainer:
 
 func _action_row() -> HBoxContainer:
 	return ACTION_ROW_SCENE.instantiate()
+
+func _make_action_grid(buttons: Array[Button], columns: int = 2) -> GridContainer:
+	var flow: GridContainer = GridContainer.new()
+	flow.columns = max(columns, 1)
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow.add_theme_constant_override("h_separation", 8)
+	flow.add_theme_constant_override("v_separation", 8)
+	for button: Button in buttons:
+		button.custom_minimum_size = Vector2(0, 44)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		flow.add_child(button)
+	return flow
 
 func _make_chip(title: String, value: String) -> PanelContainer:
 	var panel: PanelContainer = CHIP_SCENE.instantiate()
@@ -1382,6 +1450,71 @@ func _recommended_action_label(action: String) -> String:
 		_:
 			return action
 
+func _game_status_label(status: String) -> String:
+	match status:
+		"PLAYING":
+			return "进行中"
+		"PAUSED":
+			return "暂停"
+		"VICTORY":
+			return "已胜利"
+		"DEFEAT":
+			return "已失败"
+		_:
+			return status
+
+func _charter_status_label(status: String) -> String:
+	match status:
+		"INACTIVE":
+			return "未启动"
+		"PROPOSED":
+			return "提案中"
+		"VOTING":
+			return "表决中"
+		"RATIFIED":
+			return "已通过"
+		"REJECTED":
+			return "已否决"
+		_:
+			return status
+
+func _interception_status_label(status: String) -> String:
+	match status:
+		"FULL":
+			return "全域监控"
+		"PARTIAL":
+			return "部分可见"
+		"LIMITED":
+			return "能力受限"
+		"UNKNOWN":
+			return "未知"
+		_:
+			return status
+
+func _fleet_readiness_label(readiness: String) -> String:
+	match readiness:
+		"FULL":
+			return "完备"
+		"DEGRADED":
+			return "受损"
+		"CRITICAL":
+			return "危急"
+		_:
+			return readiness
+
+func _message_type_label(message_type: String) -> String:
+	match message_type:
+		"SYSTEM":
+			return "系统播报"
+		"EVENT":
+			return "事件更新"
+		"COMBAT":
+			return "战斗通报"
+		"DIPLOMACY":
+			return "外交动态"
+		_:
+			return message_type
+
 func _ascension_phase_label(phase: String) -> String:
 	match phase:
 		"INACTIVE":
@@ -1399,6 +1532,11 @@ func _ascension_phase_label(phase: String) -> String:
 
 func _signed_int_text(value: int) -> String:
 	return "%s%s" % ["+" if value >= 0 else "", str(value)]
+
+func _victory_path_label(value: Variant) -> String:
+	if value == null or str(value) == "":
+		return "未设定"
+	return VICTORY_FOCUS_LABELS.get(str(value), str(value))
 
 func _event_template_from_preview(event_id: String) -> String:
 	var lowered: String = event_id.to_lower()
@@ -1527,6 +1665,6 @@ func _on_visibility_selected(index: int, faction_id: String) -> void:
 	GameState.set_diplomatic_visibility(faction_id, value)
 
 func _on_diplomacy_changed() -> void:
-	if GameState.active_tab == "DIPLOMACY" or GameState.active_tab == "COMMS":
+	if GameState.active_tab == "DIPLOMACY" or GameState.active_tab == "COMMS" or GameState.selected_fleet_id != "" or GameState.selected_system_id != "":
 		refresh()
 		_refresh_visible_panels()
