@@ -166,18 +166,18 @@ func _update_responsive_layout() -> void:
 	var compact: bool = viewport_width < 1440.0
 	var narrow_desktop: bool = viewport_width < 1280.0
 	var very_narrow: bool = viewport_width < 1120.0
-	var drawer_width: float = clampf(viewport_width * (0.29 if narrow_desktop else 0.27), 340.0, 440.0)
-	var side_margin: float = 24.0 if not compact else 12.0 if very_narrow else 16.0
+	var drawer_width: float = clampf(viewport_width * (0.30 if narrow_desktop else 0.28), 352.0, 456.0)
+	var side_margin: float = 20.0 if not compact else 12.0 if very_narrow else 16.0
 	var top_bar_bottom: float = top_bar.offset_bottom
 	right_drawer.offset_left = -drawer_width - side_margin
 	right_drawer.offset_right = -side_margin
 	top_bar.offset_left = side_margin
 	top_bar.offset_right = -side_margin
-	top_bar.add_theme_constant_override("separation", 10 if not compact else 4 if very_narrow else 6)
+	top_bar.add_theme_constant_override("separation", 8 if not compact else 4 if very_narrow else 6)
 	bottom_tabs.offset_left = side_margin
 	bottom_tabs.offset_right = -side_margin
-	bottom_tabs.offset_top = -82.0 if not compact else -74.0 if very_narrow else -78.0
-	bottom_tabs.offset_bottom = -24.0 if not compact else -16.0 if very_narrow else -20.0
+	bottom_tabs.offset_top = -80.0 if not compact else -72.0 if very_narrow else -76.0
+	bottom_tabs.offset_bottom = -20.0 if not compact else -14.0 if very_narrow else -18.0
 	bottom_tabs.add_theme_constant_override("separation", 8 if not compact else 4 if very_narrow else 6)
 	right_drawer.offset_top = top_bar_bottom + (8.0 if not compact else 6.0)
 	right_drawer.offset_bottom = bottom_tabs.offset_top - (8.0 if not compact else 6.0)
@@ -193,7 +193,7 @@ func _update_responsive_layout() -> void:
 	tech_button.custom_minimum_size = Vector2(nav_width, nav_height)
 	diplomacy_button.custom_minimum_size = Vector2(nav_width, nav_height)
 	communications_button.custom_minimum_size = Vector2(nav_width, nav_height)
-	toggle_labels_button.custom_minimum_size = Vector2(116 if very_narrow else 132 if narrow_desktop else 136 if compact else 160, 52 if very_narrow else 56)
+	toggle_labels_button.custom_minimum_size = Vector2(124 if very_narrow else 136 if narrow_desktop else 148 if compact else 164, 52 if very_narrow else 56)
 	food_chip.custom_minimum_size = Vector2(104 if very_narrow else 112 if narrow_desktop else 120 if compact else 132, 52 if very_narrow else 56)
 	minerals_chip.custom_minimum_size = Vector2(104 if very_narrow else 112 if narrow_desktop else 120 if compact else 132, 52 if very_narrow else 56)
 	industry_chip.custom_minimum_size = Vector2(104 if very_narrow else 112 if narrow_desktop else 120 if compact else 132, 52 if very_narrow else 56)
@@ -254,8 +254,13 @@ func _rebuild_bottom_tabs() -> void:
 		var fleet_button: Button = _make_action_button(str(fleet.get("name", "舰队")), GameState.select_fleet.bind(fleet.get("id", "")))
 		fleet_button.custom_minimum_size = Vector2(132 if root.size.x < 1440.0 else 144, 52)
 		if GameState.selected_fleet_id == str(fleet.get("id", "")):
-			fleet_button.add_theme_color_override("font_color", Color("0B0C15"))
-			fleet_button.add_theme_stylebox_override("normal", _button_style(Color("8BE9FD"), Color("8BE9FD"), 16))
+			var fleet_active_style: StyleBoxFlat = _button_style(Color("7AD9FF"), Color("B7F0FF"), 16)
+			var fleet_hover_style: StyleBoxFlat = _button_style(Color("93E3FF"), Color("D8F8FF"), 16)
+			fleet_button.add_theme_color_override("font_color", Color("071019"))
+			fleet_button.add_theme_stylebox_override("normal", fleet_active_style)
+			fleet_button.add_theme_stylebox_override("hover", fleet_hover_style)
+			fleet_button.add_theme_stylebox_override("pressed", _button_style(Color("5CB6E8"), Color("9FE9FF"), 16))
+			fleet_button.add_theme_stylebox_override("focus", fleet_hover_style)
 		fleet_tabs.add_child(fleet_button)
 
 func _build_objectives_panel() -> void:
@@ -1447,10 +1452,10 @@ func _button_style(fill: Color, border: Color, radius: int) -> StyleBoxFlat:
 func _configure_tab_button(button: Button, active: bool) -> void:
 	button.button_pressed = active
 	if active:
-		var active_style: StyleBoxFlat = _button_style(Color("C8B7FF"), Color("C8B7FF"), 16)
-		var active_hover_style: StyleBoxFlat = _button_style(Color("DDD3FF"), Color("E8E0FF"), 16)
-		var active_pressed_style: StyleBoxFlat = _button_style(Color("A891F7"), Color("C8B7FF"), 16)
-		button.add_theme_color_override("font_color", Color("0B0C15"))
+		var active_style: StyleBoxFlat = _button_style(Color("7AD9FF"), Color("B7F0FF"), 16)
+		var active_hover_style: StyleBoxFlat = _button_style(Color("93E3FF"), Color("D8F8FF"), 16)
+		var active_pressed_style: StyleBoxFlat = _button_style(Color("5CB6E8"), Color("9FE9FF"), 16)
+		button.add_theme_color_override("font_color", Color("071019"))
 		button.add_theme_stylebox_override("normal", active_style)
 		button.add_theme_stylebox_override("hover", active_hover_style)
 		button.add_theme_stylebox_override("pressed", active_pressed_style)

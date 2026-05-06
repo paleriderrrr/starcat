@@ -1,47 +1,40 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
-[sub_resource type="StyleBoxFlat" id="1"]
-bg_color = Color(0.09, 0.1, 0.15, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.2, 0.254902, 0.360784, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-content_margin_left = 12.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/card_shell.png" id="1_card"]
+
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("1_card")
+texture_margin_left = 46.0
+texture_margin_top = 46.0
+texture_margin_right = 46.0
+texture_margin_bottom = 46.0
 
 [node name="TechCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")
 
 [node name="Content" type="VBoxContainer" parent="."]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.94902, 0.980392, 1, 1)
+theme_override_font_sizes/font_size = 18
 custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.956863, 0.976471, 1, 1)
-theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
 text = "科技名称"
 
 [node name="Description" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.870588, 0.917647, 0.972549, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.909804, 0.92549, 0.968627, 1)
 autowrap_mode = 3
 text = "科技描述"
 
 [node name="Meta" type="Label" parent="Content"]
+theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.658824, 0.764706, 0.964706, 1)
 autowrap_mode = 3
 text = "研究信息"
 
@@ -55,9 +48,9 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
 [node name="EffectsTitle" type="Label" parent="Content/Columns/EffectsColumn"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.988235, 0.85098, 0.533333, 1)
+theme_override_colors/font_color = Color(0.431373, 0.909804, 0.980392, 1)
 theme_override_font_sizes/font_size = 15
+layout_mode = 2
 text = "加成"
 
 [node name="EffectsList" type="VBoxContainer" parent="Content/Columns/EffectsColumn"]
@@ -70,9 +63,9 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
 [node name="UnlocksTitle" type="Label" parent="Content/Columns/UnlocksColumn"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.541176, 0.913725, 0.992157, 1)
+theme_override_colors/font_color = Color(0.764706, 0.694118, 0.992157, 1)
 theme_override_font_sizes/font_size = 15
+layout_mode = 2
 text = "解锁"
 
 [node name="UnlocksList" type="VBoxContainer" parent="Content/Columns/UnlocksColumn"]

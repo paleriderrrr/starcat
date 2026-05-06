@@ -1,20 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
-[sub_resource type="StyleBoxFlat" id="1"]
-bg_color = Color(0.11, 0.13, 0.2, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.294118, 0.364706, 0.556863, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-content_margin_left = 12.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/chip_panel.png" id="1_chip"]
+
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("1_chip")
+texture_margin_left = 44.0
+texture_margin_top = 44.0
+texture_margin_right = 44.0
+texture_margin_bottom = 44.0
 
 [node name="Chip" type="PanelContainer"]
 custom_minimum_size = Vector2(120, 56)
@@ -30,7 +23,7 @@ theme_override_constants/separation = 2
 custom_minimum_size = Vector2(0, 16)
 layout_mode = 2
 text = "标题"
-theme_override_colors/font_color = Color(0.623529, 0.705882, 0.901961, 1)
+theme_override_colors/font_color = Color(0.45098, 0.819608, 0.956863, 1)
 theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 
@@ -38,6 +31,6 @@ autowrap_mode = 3
 custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 text = "数值"
-theme_override_colors/font_color = Color(0.968627, 0.976471, 1, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.952941, 0.984314, 1, 1)
+theme_override_font_sizes/font_size = 22
 autowrap_mode = 3

@@ -1,20 +1,25 @@
-[gd_scene format=3 uid="uid://ssf1xwy6ujac"]
+[gd_scene load_steps=9 format=3 uid="uid://ssf1xwy6ujac"]
 
 [ext_resource type="Script" path="res://scripts/HudLayer.gd" id="1_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/Chip.tscn" id="2_chip"]
 [ext_resource type="PackedScene" path="res://scenes/ui/ActionButton.tscn" id="3_button"]
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/panel_shell_strong.png" id="4_shell_strong"]
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/panel_shell.png" id="5_shell"]
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/divider_glow.png" id="6_divider"]
 
-[sub_resource type="StyleBoxFlat" id="1"]
-bg_color = Color(0.07, 0.08, 0.13, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.360784, 0.419608, 0.611765, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("4_shell_strong")
+texture_margin_left = 56.0
+texture_margin_top = 56.0
+texture_margin_right = 56.0
+texture_margin_bottom = 56.0
+
+[sub_resource type="StyleBoxTexture" id="2"]
+texture = ExtResource("5_shell")
+texture_margin_left = 56.0
+texture_margin_top = 56.0
+texture_margin_right = 56.0
+texture_margin_bottom = 56.0
 
 [node name="HudLayer" type="CanvasLayer" unique_id=442902302]
 script = ExtResource("1_hud")
@@ -33,11 +38,24 @@ layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 20.0
-offset_right = -24.0
-offset_bottom = 96.0
+offset_top = 18.0
+offset_right = -20.0
+offset_bottom = 92.0
 grow_horizontal = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
+
+[node name="TopDivider" type="TextureRect" parent="Root" unique_id=117001]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 88.0
+offset_right = -24.0
+offset_bottom = 112.0
+grow_horizontal = 2
+mouse_filter = 2
+texture = ExtResource("6_divider")
+stretch_mode = 6
 
 [node name="TurnChip" parent="Root/TopBar" unique_id=1763898050 instance=ExtResource("2_chip")]
 layout_mode = 2
@@ -78,9 +96,9 @@ anchor_left = 1.0
 anchor_top = 0.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -456.0
+offset_left = -468.0
 offset_top = -337.0
-offset_right = -24.0
+offset_right = -20.0
 offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -157,7 +175,7 @@ offset_bottom = 300.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
-theme_override_styles/panel = SubResource("1")
+theme_override_styles/panel = SubResource("2")
 
 [node name="Margin" type="MarginContainer" parent="Root/CenterModalOverlay/CenterModal" unique_id=1788620851]
 layout_mode = 2
@@ -211,13 +229,29 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -82.0
+offset_top = -80.0
 offset_right = -24.0
-offset_bottom = -24.0
+offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 8
 alignment = 1
+
+[node name="BottomDivider" type="TextureRect" parent="Root" unique_id=117002]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -104.0
+offset_right = -24.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("6_divider")
+stretch_mode = 6
 
 [node name="ObjectivesButton" parent="Root/BottomTabs" unique_id=1627532557 instance=ExtResource("3_button")]
 custom_minimum_size = Vector2(128, 52)
