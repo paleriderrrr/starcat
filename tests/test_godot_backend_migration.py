@@ -145,6 +145,13 @@ class GodotBackendMigrationTests(unittest.TestCase):
                 if stripped.startswith('text = "'):
                     self.assertTrue(stripped.endswith('"'), f"{scene_path}: {stripped}")
 
+    def test_info_card_scene_is_a_valid_panel_container_shell(self) -> None:
+        scene_text = _read_text("starcat/scenes/ui/InfoCard.tscn")
+
+        self.assertIn('[ext_resource type="Texture2D" path="res://assets/ui/bridge/panel_shell.png"', scene_text)
+        self.assertIn('[node name="InfoCard" type="PanelContainer"]', scene_text)
+        self.assertIn('[node name="Content" type="VBoxContainer" parent="."]', scene_text)
+
     def test_tech_card_splits_effects_and_unlocks_into_separate_columns(self) -> None:
         tech_scene = _read_text("starcat/scenes/ui/TechCard.tscn")
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
@@ -293,8 +300,17 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('start_move_button.disabled = move_mode_active', hud_source)
         self.assertIn('cancel_move_button.disabled = not move_mode_active', hud_source)
         self.assertIn('repair_button.disabled = total_hp >= total_max_hp', hud_source)
+        self.assertIn('start_move_button.disabled = move_mode_active or int(fleet.get("movementCooldown", 0)) > 0 or reachable_routes.is_empty()', hud_source)
+        self.assertIn('start_move_button.tooltip_text = "舰队仍在移动冷却中，暂时不能再次规划跃迁。"', hud_source)
+        self.assertIn('start_move_button.tooltip_text = "当前没有可达航线，无法进入移动选择。"', hud_source)
+        self.assertIn('cancel_move_button.tooltip_text = "当前未处于移动模式。"', hud_source)
+        self.assertIn('repair_button.tooltip_text = "舰队已处于满状态，无需修理。"', hud_source)
         self.assertIn('split_button.disabled = fleet.get("ships", []).size() < 2', hud_source)
+        self.assertIn('split_button.tooltip_text = "至少需要 2 艘舰船才能拆分舰队。"', hud_source)
         self.assertIn('merge_button.disabled = GameState.get_player_fleets_in_system(str(fleet.get("systemId", ""))).size() < 2', hud_source)
+        self.assertIn('merge_button.tooltip_text = "本星系至少需要 2 支己方舰队才能合并。"', hud_source)
+        self.assertIn('status_button.tooltip_text = "刷新舰队分析，查看战备与编组评估。"', hud_source)
+        self.assertIn('_panel_add(_make_status_card("当前建议"', hud_source)
         self.assertNotIn('_panel_add(_make_section_title("移动"))', hud_source)
         self.assertNotIn('_panel_add(_make_section_title("后勤维护"))', hud_source)
 
@@ -352,7 +368,10 @@ class GodotBackendMigrationTests(unittest.TestCase):
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
         api_source = _read_text("starcat/scripts/autoload/ApiClient.gd")
 
-        self.assertIn('"状态: %s" % _game_status_label(str(GameState.game_state.get("status", "PLAYING")))', hud_source)
+        self.assertIn('func _objective_summary_lines() -> Array:', hud_source)
+        self.assertIn('lines.append("当前战略: %s" % (segments[0] if segments.size() > 0 else "未设定"))', hud_source)
+        self.assertIn('lines.append("阶段推进: %s" % segments[1])', hud_source)
+        self.assertIn('lines.append("长期目标: %s" % segments[2])', hud_source)
         self.assertIn('"胜利路径: %s" % _victory_path_label(GameState.game_state.get("victory_path", null))', hud_source)
         self.assertIn('func _victory_path_label(value: Variant) -> String:', hud_source)
         self.assertIn('func _game_status_label(status: String) -> String:', hud_source)
@@ -374,6 +393,11 @@ class GodotBackendMigrationTests(unittest.TestCase):
     def test_communications_panel_is_grouped_into_system_diplomatic_and_proposals(self) -> None:
         hud_source = _read_text("starcat/scripts/HudLayer.gd")
 
+        self.assertIn('_panel_add(_make_summary_card(', hud_source)
+        self.assertIn('"当前摘要"', hud_source)
+        self.assertIn('"系统消息: %s" % str(GameState.game_state.get("messages", []).size() + recent_reports.size())', hud_source)
+        self.assertIn('"外交通信: %s" % str(visible_messages.size() + (0 if GameState.diplomatic_message.is_empty() else 1))', hud_source)
+        self.assertIn('"待处理提案: %s" % str(pending_proposals.size())', hud_source)
         self.assertIn('_panel_add(_make_section_title("系统消息"))', hud_source)
         self.assertIn('_panel_add(_make_section_title("外交通信"))', hud_source)
         self.assertIn('_panel_add(_make_section_title("提案"))', hud_source)

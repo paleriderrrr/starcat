@@ -271,12 +271,7 @@ func _build_objectives_panel() -> void:
 	_panel_add(_make_section_title("当前目标"))
 	_panel_add(_make_status_card(
 		"当前目标",
-		[
-			"目标: %s" % str(GameState.game_state.get("objective", "")),
-			"状态: %s" % _game_status_label(str(GameState.game_state.get("status", "PLAYING"))),
-			"飞升进度: %s/100" % str(GameState.game_state.get("ascension_progress", 0)),
-			"胜利路径: %s" % _victory_path_label(GameState.game_state.get("victory_path", null))
-		]
+		_objective_summary_lines()
 	))
 	_panel_add(_make_section_title("胜利进度"))
 	_panel_add(_make_status_card(
@@ -569,12 +564,24 @@ func _build_diplomacy_panel() -> void:
 		_panel_add(_make_action_button("查看详情", _open_message_modal.bind(GameState.diplomatic_message), "primary"))
 
 func _build_communications_panel() -> void:
+	var visible_messages: Array = GameState.get_visible_diplomatic_messages()
+	var pending_proposals: Array = GameState.get_pending_proposals()
+	var recent_reports: Array = GameState.get_recent_combat_reports()
 	_panel_add(_make_section_title("通讯中心"))
 	_panel_add(_make_status_card(
 		"通讯中心",
 		[
 			"收录玩家可见的系统消息、外交通信与待处理提案。",
 			"列表只保留摘要，完整正文统一通过详情查看。"
+		]
+	))
+	_panel_add(_make_summary_card(
+		"当前摘要",
+		[
+			"系统消息: %s" % str(GameState.game_state.get("messages", []).size() + recent_reports.size()),
+			"外交通信: %s" % str(visible_messages.size() + (0 if GameState.diplomatic_message.is_empty() else 1)),
+			"待处理提案: %s" % str(pending_proposals.size()),
+			"最新回合: T%s" % str(GameState.game_state.get("turn", 1))
 		]
 	))
 	_panel_add(_make_section_title("系统消息"))
@@ -585,7 +592,7 @@ func _build_communications_panel() -> void:
 			"meta": _message_type_label(str(message.get("type", "SYSTEM"))),
 			"summary": _truncate_text(str(message.get("content", "")), 96)
 		})
-	for report: Dictionary in GameState.get_recent_combat_reports().slice(0, 3):
+	for report: Dictionary in recent_reports.slice(0, 3):
 		system_entries.append({
 			"title": "T%s / %s" % [str(report.get("turn", 1)), str(report.get("title", "战斗结果"))],
 			"meta": "%s vs %s" % [str(report.get("attackerName", "进攻方")), str(report.get("defenderName", "防守方"))],
@@ -597,7 +604,6 @@ func _build_communications_panel() -> void:
 		for entry: Dictionary in system_entries:
 			_panel_add(_make_feed_card(str(entry.get("title", "")), str(entry.get("meta", "")), str(entry.get("summary", "")), ""))
 	_panel_add(_make_section_title("外交通信"))
-	var visible_messages: Array = GameState.get_visible_diplomatic_messages()
 	var diplomacy_entries: Array = visible_messages.slice(0, min(8, visible_messages.size()))
 	if not GameState.diplomatic_message.is_empty():
 		var already_listed: bool = false
@@ -623,7 +629,6 @@ func _build_communications_panel() -> void:
 			))
 			_panel_add(_make_action_button("查看详情", _open_message_modal.bind(message)))
 	_panel_add(_make_section_title("提案"))
-	var pending_proposals: Array = GameState.get_pending_proposals()
 	if pending_proposals.is_empty():
 		_panel_add(_make_status_card("提案", ["当前没有待处理的外交提案。"]))
 	else:
@@ -737,6 +742,8 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 	var total_hp: int = 0
 	var total_max_hp: int = 0
 	var total_damage: int = 0
+	var reachable_routes: Array = GameState.get_reachable_system_details(fleet.get("id", ""))
+	var player_energy: int = int(GameState.get_player_faction().get("resources", {}).get("energy", 0))
 	for ship: Dictionary in fleet.get("ships", []):
 		total_hp += int(ship.get("hp", 0))
 		total_max_hp += int(ship.get("maxHp", 0))
@@ -757,6 +764,9 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 		"选择一个任务组后会立即切换当前舰队指令。",
 		"移动模式开启后，直接点击星图中的可达星系即可跃迁。"
 	]))
+	_panel_add(_make_status_card("当前建议", [
+		_fleet_action_hint(fleet, total_hp, total_max_hp, reachable_routes, player_energy)
+	]))
 	_panel_add(_make_section_title("行动指令"))
 	_panel_add(_make_action_grid([
 		_make_action_button("待命", GameState.set_selected_fleet_mission.bind("IDLE"), "neutral"),
@@ -768,11 +778,21 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 	_panel_add(_make_section_title("机动与维护"))
 	var move_mode_active: bool = GameState.fleet_move_mode and GameState.selected_fleet_id == str(fleet.get("id", ""))
 	var start_move_button: Button = _make_action_button("开始移动", GameState.begin_fleet_move_mode.bind(fleet.get("id", "")), "primary")
-	start_move_button.disabled = move_mode_active
+	start_move_button.disabled = move_mode_active or int(fleet.get("movementCooldown", 0)) > 0 or reachable_routes.is_empty()
+	if move_mode_active:
+		start_move_button.tooltip_text = "该舰队已经处于移动模式。"
+	elif int(fleet.get("movementCooldown", 0)) > 0:
+		start_move_button.tooltip_text = "舰队仍在移动冷却中，暂时不能再次规划跃迁。"
+	elif reachable_routes.is_empty():
+		start_move_button.tooltip_text = "当前没有可达航线，无法进入移动选择。"
 	var cancel_move_button: Button = _make_action_button("取消移动", GameState.cancel_fleet_move_mode, "neutral")
 	cancel_move_button.disabled = not move_mode_active
+	if not move_mode_active:
+		cancel_move_button.tooltip_text = "当前未处于移动模式。"
 	var repair_button: Button = _make_action_button("修复舰队", GameState.repair_fleet.bind(fleet.get("id", "")), "accent")
 	repair_button.disabled = total_hp >= total_max_hp
+	if repair_button.disabled:
+		repair_button.tooltip_text = "舰队已处于满状态，无需修理。"
 	_panel_add(_make_action_grid([
 		start_move_button,
 		cancel_move_button,
@@ -809,19 +829,25 @@ func _build_fleet_panel(fleet: Dictionary) -> void:
 	_panel_add(_make_section_title("编组与评估"))
 	var split_button: Button = _make_action_button("拆分舰队", GameState.split_selected_fleet, "neutral")
 	split_button.disabled = fleet.get("ships", []).size() < 2
+	if split_button.disabled:
+		split_button.tooltip_text = "至少需要 2 艘舰船才能拆分舰队。"
 	var merge_button: Button = _make_action_button("合并本地舰队", GameState.merge_player_fleets_at_selected_system, "accent")
 	merge_button.disabled = GameState.get_player_fleets_in_system(str(fleet.get("systemId", ""))).size() < 2
+	if merge_button.disabled:
+		merge_button.tooltip_text = "本星系至少需要 2 支己方舰队才能合并。"
 	var status_button: Button = _make_action_button("状态评估", GameState.request_selected_fleet_status, "accent")
+	status_button.tooltip_text = "刷新舰队分析，查看战备与编组评估。"
 	_panel_add(_make_action_grid([
 		split_button,
 		merge_button,
 		status_button
 	], 2))
 	_panel_add(_make_section_title("可达航线"))
-	var player_energy: int = int(GameState.get_player_faction().get("resources", {}).get("energy", 0))
+	if reachable_routes.is_empty():
+		_panel_add(_make_status_card("可达航线", ["当前没有直接相连的可达星系。"]))
 	for ship: Dictionary in fleet.get("ships", []):
 		_panel_add(_make_fleet_ship_card(ship))
-	for route: Dictionary in GameState.get_reachable_system_details(fleet.get("id", "")):
+	for route: Dictionary in reachable_routes:
 		var system_id: String = str(route.get("systemId", ""))
 		var system: Dictionary = GameState.get_system_by_id(system_id)
 		var fits_bandwidth: bool = bool(route.get("fitsBandwidth", true))
@@ -1392,6 +1418,34 @@ func _resource_line(bundle: Dictionary, positive_prefix: bool = false) -> String
 		var prefix: String = "+" if positive_prefix and value > 0 else ""
 		parts.append("%s%s %s" % [prefix, str(value), RESOURCE_NAMES.get(key, key)])
 	return "无" if parts.is_empty() else " / ".join(parts)
+
+func _objective_summary_lines() -> Array:
+	var objective_text: String = str(GameState.game_state.get("objective", ""))
+	var segments: PackedStringArray = objective_text.split(" | ") if objective_text != "" else PackedStringArray()
+	var lines: Array = []
+	lines.append("当前战略: %s" % (segments[0] if segments.size() > 0 else "未设定"))
+	if segments.size() > 1:
+		lines.append("阶段推进: %s" % segments[1])
+	if segments.size() > 2:
+		lines.append("长期目标: %s" % segments[2])
+	lines.append("状态: %s" % _game_status_label(str(GameState.game_state.get("status", "PLAYING"))))
+	lines.append("飞升进度: %s/100" % str(GameState.game_state.get("ascension_progress", 0)))
+	lines.append("胜利路径: %s" % _victory_path_label(GameState.game_state.get("victory_path", null)))
+	return lines
+
+func _fleet_action_hint(fleet: Dictionary, total_hp: int, total_max_hp: int, reachable_routes: Array, player_energy: int) -> String:
+	if total_hp < total_max_hp:
+		return "舰队存在战损，若资源允许，优先修复后再执行高风险任务。"
+	if int(fleet.get("movementCooldown", 0)) > 0:
+		return "舰队仍在冷却中，本回合更适合调整任务或等待下一次跃迁窗口。"
+	if reachable_routes.is_empty():
+		return "当前没有直接航线可用，建议先改为驻防或等待新通道出现。"
+	var cheapest_route_cost: int = 999999
+	for route: Dictionary in reachable_routes:
+		cheapest_route_cost = mini(cheapest_route_cost, int(route.get("traversalCost", 1)))
+	if player_energy < cheapest_route_cost:
+		return "舰队具备可达航线，但当前能源不足以完成最便宜的一次跃迁。"
+	return "舰队状态完备，可在本回合执行跃迁、殖民或前沿打击任务。"
 
 func _treaty_names_text(treaties: Array) -> String:
 	if treaties.is_empty():

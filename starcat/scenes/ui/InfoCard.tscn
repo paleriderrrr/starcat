@@ -1,1 +1,17 @@
 [gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/ui/bridge/panel_shell.png" id="1_panel"]
+
+[sub_resource type="StyleBoxTexture" id="1"]
+texture = ExtResource("1_panel")
+texture_margin_left = 46.0
+texture_margin_top = 46.0
+texture_margin_right = 46.0
+texture_margin_bottom = 46.0
+
+[node name="InfoCard" type="PanelContainer"]
+theme_override_styles/panel = SubResource("1")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
