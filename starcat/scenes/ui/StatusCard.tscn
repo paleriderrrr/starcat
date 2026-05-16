@@ -4,22 +4,26 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("1_card")
-texture_margin_left = 46.0
-texture_margin_top = 46.0
-texture_margin_right = 46.0
-texture_margin_bottom = 46.0
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="StatusCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")
 
 [node name="Content" type="VBoxContainer" parent="."]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 4
 
 [node name="Title" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.94902, 0.980392, 1, 1)
-theme_override_font_sizes/font_size = 18
-custom_minimum_size = Vector2(0, 24)
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 16
+custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 autowrap_mode = 3
 text = "状态标题"

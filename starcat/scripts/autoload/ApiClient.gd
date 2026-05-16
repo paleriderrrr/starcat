@@ -5,6 +5,7 @@ const LocalConfigScript = preload("res://scripts/config/LocalConfig.gd")
 const GameAnalysisServiceScript = preload("res://scripts/services/GameAnalysisService.gd")
 const LocalAIServiceScript = preload("res://scripts/services/LocalAIService.gd")
 const NarrativeServiceScript = preload("res://scripts/services/NarrativeService.gd")
+const DecisionIterationServiceScript = preload("res://scripts/services/DecisionIterationService.gd")
 const BailianProviderScript = preload("res://scripts/llm/BailianProvider.gd")
 
 signal service_health_checked(ok: bool)
@@ -19,6 +20,7 @@ var _settings: Dictionary = {}
 var _analysis_service
 var _ai_service
 var _narrative_service
+var _iteration_service
 var _provider
 
 func _ready() -> void:
@@ -31,6 +33,7 @@ func _ensure_services() -> void:
 	_analysis_service = GameAnalysisServiceScript.new()
 	_ai_service = LocalAIServiceScript.new()
 	_narrative_service = NarrativeServiceScript.new()
+	_iteration_service = DecisionIterationServiceScript.new()
 	_provider = BailianProviderScript.new()
 	_provider.configure(_settings)
 	add_child(_provider)
@@ -47,6 +50,36 @@ func request_world_state(game_state: Dictionary, query_filter: String = "ALL") -
 	_ensure_services()
 	world_query_received.emit({
 		"world_state_report": _analysis_service.query_world_state(game_state, query_filter, ["faction_count", "fleet_count", "average_military_power", "war_count"])
+	})
+
+func request_decision_iteration_snapshot(game_state: Dictionary, perspective_faction_id: String = "f_player", game_id: String = "starcat_local") -> void:
+	_ensure_services()
+	world_query_received.emit({
+		"decision_iteration_snapshot": _iteration_service.build_turn_snapshot(game_state, perspective_faction_id, game_id)
+	})
+
+func request_decision_iteration_record(snapshot: Dictionary, decision: Dictionary, provider_payload: Dictionary = {}, playbook_id: String = "strategist_v0", tools_called: Array = []) -> void:
+	_ensure_services()
+	world_query_received.emit({
+		"decision_iteration_record": _iteration_service.build_decision_record(snapshot, decision, provider_payload, playbook_id, tools_called)
+	})
+
+func request_decision_transition_evaluation(before_snapshot: Dictionary, after_snapshot: Dictionary) -> void:
+	_ensure_services()
+	world_query_received.emit({
+		"decision_iteration_evaluation": _iteration_service.evaluate_transition(before_snapshot, after_snapshot)
+	})
+
+func request_decision_trial_record(game_id: String, snapshots: Array, decisions: Array, evaluations: Array, metadata: Dictionary = {}) -> void:
+	_ensure_services()
+	world_query_received.emit({
+		"decision_iteration_trial": _iteration_service.build_trial_record(game_id, snapshots, decisions, evaluations, metadata)
+	})
+
+func request_decision_artifact_write(record: Dictionary, path: String = "user://decision_iterations/records.jsonl") -> void:
+	_ensure_services()
+	world_query_received.emit({
+		"decision_iteration_write": _iteration_service.append_jsonl(record, path)
 	})
 
 func request_fleet_move_validation(game_state: Dictionary, fleet_id: String, target_system_id: String) -> void:

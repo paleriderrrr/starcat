@@ -55,9 +55,23 @@ func _emit_all() -> void:
 
 func reset_state() -> void:
 	game_state = InitialDataScript.create_initial_state()
+	_clear_selected_fleet()
+	ai_advice = ""
+	world_data = {}
+	diplomatic_message = {}
+	diplomatic_drafts = {}
+	diplomatic_visibility_prefs = {}
+	turn_busy = false
+	_pending_conversation_target_id = ""
+	_pending_conversation_visibility = "PUBLIC"
+	_emit_all()
+
+func start_new_game(options: Dictionary) -> void:
+	var normalized_options: Dictionary = InitialDataScript.normalize_game_setup_options(options)
+	game_state = InitialDataScript.create_initial_state(normalized_options)
+	_clear_selected_fleet()
 	selected_system_id = ""
-	selected_fleet_id = ""
-	fleet_move_mode = false
+	active_tab = "OBJECTIVES"
 	ai_advice = ""
 	world_data = {}
 	diplomatic_message = {}
@@ -95,6 +109,8 @@ func get_enemy_fleet_for_selected_context() -> Dictionary:
 	if selected_fleet_id == "":
 		return {}
 	var selected_fleet: Dictionary = get_fleet_by_id(selected_fleet_id)
+	if selected_fleet.is_empty():
+		return {}
 	var system_id: String = selected_system_id if selected_system_id != "" else selected_fleet.get("systemId", "")
 	for fleet: Dictionary in game_state.get("fleets", []):
 		if fleet.get("ownerId", "") == PLAYER_FACTION_ID:
@@ -214,24 +230,36 @@ func select_system(system_id: String) -> void:
 	if try_move_selected_fleet_to_system(system_id):
 		return
 	selected_system_id = system_id
+	selected_fleet_id = ""
+	fleet_move_mode = false
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func focus_system(system_id: String) -> void:
 	selected_system_id = system_id
+	selected_fleet_id = ""
+	fleet_move_mode = false
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func select_fleet(fleet_id: String) -> void:
+	var fleet: Dictionary = get_fleet_by_id(fleet_id)
+	if fleet.is_empty():
+		_clear_selected_fleet()
+		selection_changed.emit(selected_system_id, selected_fleet_id)
+		return
 	fleet_move_mode = false
 	selected_fleet_id = fleet_id
-	var fleet: Dictionary = get_fleet_by_id(fleet_id)
 	selected_system_id = fleet.get("systemId", "")
+	AudioManager.play_event("fleet_select")
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func clear_selection() -> void:
+	_clear_selected_fleet()
+	selection_changed.emit(selected_system_id, selected_fleet_id)
+
+func _clear_selected_fleet() -> void:
 	fleet_move_mode = false
 	selected_system_id = ""
 	selected_fleet_id = ""
-	selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func set_active_tab(tab_name: String) -> void:
 	active_tab = tab_name
@@ -270,7 +298,15 @@ func begin_fleet_move_mode(fleet_id: String = "") -> void:
 	if fleet_id != "":
 		selected_fleet_id = fleet_id
 		var fleet: Dictionary = get_fleet_by_id(fleet_id)
+		if fleet.is_empty():
+			_clear_selected_fleet()
+			selection_changed.emit(selected_system_id, selected_fleet_id)
+			return
 		selected_system_id = str(fleet.get("systemId", ""))
+		if str(fleet.get("mission", "IDLE")) == "COLONIZING":
+			fleet_move_mode = false
+			selection_changed.emit(selected_system_id, selected_fleet_id)
+			return
 	fleet_move_mode = selected_fleet_id != ""
 	selection_changed.emit(selected_system_id, selected_fleet_id)
 
@@ -284,6 +320,10 @@ func try_move_selected_fleet_to_system(system_id: String) -> bool:
 	if not fleet_move_mode or selected_fleet_id == "" or system_id == "":
 		return false
 	var selected_fleet: Dictionary = get_fleet_by_id(selected_fleet_id)
+	if selected_fleet.is_empty():
+		_clear_selected_fleet()
+		selection_changed.emit(selected_system_id, selected_fleet_id)
+		return false
 	if str(selected_fleet.get("systemId", "")) == system_id:
 		return false
 	if not get_reachable_system_ids(selected_fleet_id).has(system_id):
@@ -310,7 +350,10 @@ func merge_player_fleets_at_selected_system() -> void:
 	if system_id == "":
 		return
 	game_state = GameLogicScript.merge_player_fleets(game_state, system_id)
+	var selection_repaired: bool = _repair_selected_fleet_context(system_id)
 	state_changed.emit(game_state)
+	if selection_repaired:
+		selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func trade_with_faction(target_faction_id: String) -> void:
 	game_state = GameLogicScript.trade_with_faction(game_state, target_faction_id)
@@ -349,18 +392,45 @@ func explore_system(system_id: String) -> void:
 func colonize_system(system_id: String, mode: String = "STANDARD") -> void:
 	if selected_fleet_id == "":
 		return
+	var colonizing_fleet_id: String = selected_fleet_id
 	game_state = GameLogicScript.colonize_system(game_state, selected_fleet_id, system_id, mode)
+	var selection_repaired: bool = false
+	if colonizing_fleet_id != "" and get_fleet_by_id(colonizing_fleet_id).is_empty():
+		selected_fleet_id = ""
+		selected_system_id = system_id
+		fleet_move_mode = false
+		selection_repaired = true
+	else:
+		var updated_fleet: Dictionary = get_fleet_by_id(colonizing_fleet_id)
+		if str(updated_fleet.get("mission", "IDLE")) == "COLONIZING" and fleet_move_mode:
+			fleet_move_mode = false
+			selection_repaired = true
 	state_changed.emit(game_state)
+	if selection_repaired:
+		selection_changed.emit(selected_system_id, selected_fleet_id)
 
 func move_selected_fleet(system_id: String) -> void:
 	if selected_fleet_id == "":
 		return
-	var previous_system_id: String = str(get_fleet_by_id(selected_fleet_id).get("systemId", ""))
-	game_state = GameLogicScript.move_fleet(game_state, selected_fleet_id, system_id)
-	var updated_system_id: String = str(get_fleet_by_id(selected_fleet_id).get("systemId", previous_system_id))
+	var moving_fleet_id: String = selected_fleet_id
+	var previous_fleet: Dictionary = get_fleet_by_id(moving_fleet_id)
+	if previous_fleet.is_empty():
+		_clear_selected_fleet()
+		selection_changed.emit(selected_system_id, selected_fleet_id)
+		return
+	var previous_system_id: String = str(previous_fleet.get("systemId", ""))
+	game_state = GameLogicScript.move_fleet(game_state, moving_fleet_id, system_id)
+	var updated_fleet: Dictionary = get_fleet_by_id(moving_fleet_id)
+	if updated_fleet.is_empty():
+		_clear_selected_fleet()
+		state_changed.emit(game_state)
+		selection_changed.emit(selected_system_id, selected_fleet_id)
+		return
+	var updated_system_id: String = str(updated_fleet.get("systemId", previous_system_id))
 	var moved_successfully: bool = updated_system_id != "" and updated_system_id != previous_system_id
 	if moved_successfully:
 		fleet_move_mode = false
+		AudioManager.play_event("fleet_move")
 	selected_system_id = updated_system_id if updated_system_id != "" else previous_system_id
 	state_changed.emit(game_state)
 	selection_changed.emit(selected_system_id, selected_fleet_id)
@@ -375,6 +445,7 @@ func advance_turn() -> void:
 	else:
 		game_state = GameLogicScript.process_turn(game_state)
 		turn_busy = false
+		AudioManager.play_event("turn_ready")
 		state_changed.emit(game_state)
 
 func request_world_query() -> void:
@@ -384,6 +455,10 @@ func request_world_query() -> void:
 func request_world_state_scan() -> void:
 	if has_node("/root/ApiClient"):
 		ApiClient.request_world_state(game_state, "ALL")
+
+func request_decision_iteration_snapshot() -> void:
+	if has_node("/root/ApiClient"):
+		ApiClient.request_decision_iteration_snapshot(game_state, PLAYER_FACTION_ID)
 
 func request_fleet_move_validation(target_system_id: String) -> void:
 	if has_node("/root/ApiClient") and selected_fleet_id != "" and target_system_id != "":
@@ -462,12 +537,20 @@ func request_narrative_generation_preview() -> void:
 func execute_selected_combat_protocol(engagement_rules: String = "ALL_OUT", formation: String = "WEDGE", tactic_card: String = "BATTLE_LINE") -> void:
 	if selected_fleet_id == "":
 		return
+	var attacking_fleet_id: String = selected_fleet_id
 	var target_fleet: Dictionary = get_enemy_fleet_for_selected_context()
 	if target_fleet.is_empty():
 		return
-	game_state = GameLogicScript.initiate_combat_protocol(game_state, selected_fleet_id, "FLEET", target_fleet.get("id", ""), engagement_rules, formation, tactic_card)
+	game_state = GameLogicScript.initiate_combat_protocol(game_state, attacking_fleet_id, "FLEET", target_fleet.get("id", ""), engagement_rules, formation, tactic_card)
+	var updated_attacker: Dictionary = get_fleet_by_id(attacking_fleet_id)
+	if updated_attacker.is_empty():
+		_clear_selected_fleet()
+	else:
+		selected_system_id = str(updated_attacker.get("systemId", selected_system_id))
 	state_changed.emit(game_state)
+	selection_changed.emit(selected_system_id, selected_fleet_id)
 	diplomacy_changed.emit()
+	AudioManager.play_event("combat_alert")
 
 func apply_director_event_to_world(event_template_id: String) -> void:
 	var target_system_id: String = selected_system_id
@@ -573,6 +656,7 @@ func _on_merchant_decision_received(payload: Dictionary) -> void:
 	game_state = GameLogicScript.process_turn(game_state, payload)
 	ai_advice = payload.get("structured_text", ai_advice)
 	turn_busy = false
+	AudioManager.play_event("turn_ready")
 	state_changed.emit(game_state)
 	advisor_changed.emit(ai_advice, world_data, diplomatic_message)
 
@@ -584,5 +668,20 @@ func _on_api_failed(_route: String, _message: String) -> void:
 	if turn_busy:
 		game_state = GameLogicScript.process_turn(game_state)
 		turn_busy = false
+		AudioManager.play_event("turn_ready")
 		state_changed.emit(game_state)
 	service_status_changed.emit(service_status)
+
+func _repair_selected_fleet_context(fallback_system_id: String = "") -> bool:
+	if selected_fleet_id == "" or not get_fleet_by_id(selected_fleet_id).is_empty():
+		return false
+	fleet_move_mode = false
+	selected_fleet_id = ""
+	selected_system_id = fallback_system_id
+	if fallback_system_id != "":
+		var fleets_at_system: Array = get_player_fleets_in_system(fallback_system_id)
+		if not fleets_at_system.is_empty():
+			var surviving_fleet: Dictionary = fleets_at_system[0]
+			selected_fleet_id = str(surviving_fleet.get("id", ""))
+			selected_system_id = str(surviving_fleet.get("systemId", fallback_system_id))
+	return true

@@ -6,6 +6,7 @@ starcat/starcat.local.cfg
 
 # Temp files
 _tmp_docx_extract.txt
+runtime_captures/
 
 # Python
 __pycache__/

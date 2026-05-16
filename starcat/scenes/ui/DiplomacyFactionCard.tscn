@@ -4,49 +4,80 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("1_card")
-texture_margin_left = 46.0
-texture_margin_top = 46.0
-texture_margin_right = 46.0
-texture_margin_bottom = 46.0
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="DiplomacyFactionCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")
 
 [node name="Content" type="VBoxContainer" parent="."]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.94902, 0.980392, 1, 1)
+[node name="Header" type="HBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Portrait" type="TextureRect" parent="Content/Header"]
+custom_minimum_size = Vector2(96, 96)
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 1
+
+[node name="TitleBox" type="VBoxContainer" parent="Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Content/Header/TitleBox"]
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
 theme_override_font_sizes/font_size = 18
 custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 autowrap_mode = 3
 text = "势力 / 领袖"
 
-[node name="Relation" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.870588, 0.917647, 0.972549, 1)
+[node name="Relation" type="Label" parent="Content/Header/TitleBox"]
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3
 text = "关系等级"
 
+[node name="Emblem" type="TextureRect" parent="Content/Header"]
+custom_minimum_size = Vector2(52, 52)
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 1
+
+[node name="ShipPreview" type="TextureRect" parent="Content"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 1
+
 [node name="Stats" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
+theme_override_colors/font_color = Color(0.42, 0.76, 0.82, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3
 text = "信任与利益"
 
 [node name="Traits" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.870588, 0.917647, 0.972549, 1)
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3
 text = "特征与条约"
 
 [node name="Persona" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
+theme_override_colors/font_color = Color(0.42, 0.76, 0.82, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 autowrap_mode = 3

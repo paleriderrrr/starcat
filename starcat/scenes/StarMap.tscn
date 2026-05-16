@@ -4,16 +4,16 @@
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
-background_color = Color(0, 0, 0, 1)
+background_color = Color(0.00392157, 0.0117647, 0.0235294, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.368627, 0.34902, 0.521569, 1)
-ambient_light_energy = 1.0
+ambient_light_color = Color(0.309804, 0.360784, 0.501961, 1)
+ambient_light_energy = 0.86
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1"]
 size = Vector2(60, 60)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
-albedo_color = Color(0, 0, 0, 1)
+albedo_color = Color(0.002, 0.006, 0.012, 1)
 shading_mode = 0
 
 [node name="StarMap" type="Node3D"]
@@ -35,6 +35,8 @@ light_energy = 2.2
 mesh = SubResource("PlaneMesh_1")
 position = Vector3(0, -0.5, 0)
 material_override = SubResource("StandardMaterial3D_1")
+
+[node name="AmbientRoot" type="Node3D" parent="."]
 
 [node name="SystemsRoot" type="Node3D" parent="."]
 

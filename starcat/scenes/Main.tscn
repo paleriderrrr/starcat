@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://scenes/StarMap.tscn" id="2_map"]
 [ext_resource type="PackedScene" path="res://scenes/HudLayer.tscn" id="3_hud"]
+[ext_resource type="FontFile" path="res://assets/fonts/SourceHanSansSC-Regular.otf" id="4_ui_font"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_main")
@@ -10,3 +11,252 @@ script = ExtResource("1_main")
 [node name="StarMap" parent="." instance=ExtResource("2_map")]
 
 [node name="HudLayer" parent="." instance=ExtResource("3_hud")]
+
+[node name="MainMenuLayer" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="Root" type="Control" parent="MainMenuLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Backdrop" type="ColorRect" parent="MainMenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.006, 0.018, 0.036, 1)
+
+[node name="Panel" type="PanelContainer" parent="MainMenuLayer/Root"]
+custom_minimum_size = Vector2(980, 0)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -490.0
+offset_top = -300.0
+offset_right = 490.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="MainMenuLayer/Root/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 42
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 42
+theme_override_constants/margin_bottom = 40
+
+[node name="Layout" type="VBoxContainer" parent="MainMenuLayer/Root/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+text = "Starcat 星海领航"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout"]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.46, 0.68, 0.72, 1)
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Divider" type="TextureRect" parent="MainMenuLayer/Root/Panel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Content" type="HBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 26
+
+[node name="ControlsColumn" type="VBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="Controls" type="VBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="CivilizationRow" type="HBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="CivilizationLabel" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/CivilizationRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = "文明"
+
+[node name="CivilizationOption" type="OptionButton" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/CivilizationRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.36, 0.08, 1)
+
+[node name="MapScaleRow" type="HBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MapScaleLabel" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/MapScaleRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = "星图"
+
+[node name="MapScaleOption" type="OptionButton" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/MapScaleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.36, 0.08, 1)
+
+[node name="DifficultyRow" type="HBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="DifficultyLabel" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/DifficultyRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = "难度"
+
+[node name="DifficultyOption" type="OptionButton" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/DifficultyRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.36, 0.08, 1)
+
+[node name="OpponentRow" type="HBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="OpponentLabel" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/OpponentRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = "对手"
+
+[node name="OpponentCountOption" type="OptionButton" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn/Controls/OpponentRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.36, 0.08, 1)
+
+[node name="StartButton" type="Button" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/ControlsColumn"]
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+text = "开始对局"
+
+[node name="PreviewPanel" type="PanelContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PreviewMargin" type="MarginContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 18
+
+[node name="PreviewLayout" type="VBoxContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PreviewTitle" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.95, 0.36, 0.08, 1)
+text = "文明情报"
+
+[node name="PortraitFrame" type="PanelContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+custom_minimum_size = Vector2(0, 132)
+layout_mode = 2
+
+[node name="PortraitMargin" type="MarginContainer" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout/PortraitFrame"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="CivilizationPortrait" type="TextureRect" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout/PortraitFrame/PortraitMargin"]
+custom_minimum_size = Vector2(0, 108)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeaderValue" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = "领袖: -"
+autowrap_mode = 2
+
+[node name="FocusValue" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.42, 0.76, 0.82, 1)
+text = "路线: -"
+autowrap_mode = 2
+
+[node name="TraitValue" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.42, 0.76, 0.82, 1)
+text = "特质: -"
+autowrap_mode = 2
+
+[node name="SetupSummary" type="Label" parent="MainMenuLayer/Root/Panel/Margin/Layout/Content/PreviewPanel/PreviewMargin/PreviewLayout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 13
+theme_override_fonts/font = ExtResource("4_ui_font")
+theme_override_colors/font_color = Color(0.46, 0.68, 0.72, 1)
+text = "星图与 AI 压力摘要"
+autowrap_mode = 2

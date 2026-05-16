@@ -4,10 +4,14 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("1_card")
-texture_margin_left = 46.0
-texture_margin_top = 46.0
-texture_margin_right = 46.0
-texture_margin_bottom = 46.0
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="FeedCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")
@@ -16,21 +20,37 @@ theme_override_styles/panel = SubResource("1")
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Title" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.94902, 0.980392, 1, 1)
+[node name="Header" type="HBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Thumbnail" type="TextureRect" parent="Content/Header"]
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 1
+visible = false
+
+[node name="TextBox" type="VBoxContainer" parent="Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Content/Header/TextBox"]
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
 theme_override_font_sizes/font_size = 18
 layout_mode = 2
 autowrap_mode = 3
 text = "时间线标题"
 
-[node name="Meta" type="Label" parent="Content"]
-theme_override_colors/font_color = Color(0.537255, 0.745098, 0.862745, 1)
+[node name="Meta" type="Label" parent="Content/Header/TextBox"]
+theme_override_colors/font_color = Color(0.42, 0.76, 0.82, 1)
 layout_mode = 2
 autowrap_mode = 3
 text = "摘要信息"
 
 [node name="Body" type="RichTextLabel" parent="Content"]
-theme_override_colors/default_color = Color(0.870588, 0.917647, 0.972549, 1)
+theme_override_colors/default_color = Color(0.62, 0.78, 0.82, 1)
 layout_mode = 2
 autowrap_mode = 3
 bbcode_enabled = true
@@ -39,7 +59,7 @@ scroll_active = false
 text = "正文"
 
 [node name="Footnote" type="RichTextLabel" parent="Content"]
-theme_override_colors/default_color = Color(0.901961, 0.921569, 0.968627, 1)
+theme_override_colors/default_color = Color(0.62, 0.78, 0.82, 1)
 layout_mode = 2
 autowrap_mode = 3
 bbcode_enabled = true

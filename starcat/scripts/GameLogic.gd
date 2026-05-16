@@ -527,6 +527,22 @@ static func add_message(state: Dictionary, title: String, content: String, messa
 	next_state["messages"] = messages
 	return next_state
 
+static func append_ai_action_record(state: Dictionary, faction_id: String, action_type: String, target_id: String, summary: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var faction: Dictionary = get_faction_by_id(next_state, faction_id)
+	var log: Array = next_state.get("aiActionLog", [])
+	log.push_front({
+		"id": "ai_action_%s_%s" % [str(next_state.get("turn", 1)), str(log.size() + 1)],
+		"turn": int(next_state.get("turn", 1)),
+		"factionId": faction_id,
+		"factionName": faction.get("name", faction_id),
+		"actionType": action_type,
+		"targetId": target_id,
+		"summary": summary
+	})
+	next_state["aiActionLog"] = log
+	return add_message(next_state, "AI 行动: %s" % faction.get("name", faction_id), summary, "AI_ACTION")
+
 static func add_diplomatic_message(
 	state: Dictionary,
 	sender_id: String,
@@ -1104,6 +1120,8 @@ static func set_fleet_mission(state: Dictionary, fleet_id: String, mission: Stri
 	var fleet: Dictionary = next_state["fleets"][fleet_index]
 	if fleet.get("ownerId", "") != "f_player":
 		return next_state
+	if str(fleet.get("mission", "IDLE")) == "COLONIZING" and mission != "COLONIZING":
+		return add_message(next_state, "舰队正在殖民部署", "%s 正在建立殖民据点，部署完成前无法调整任务。" % str(fleet.get("name", "玩家舰队")), "SYSTEM")
 	fleet["mission"] = mission
 	next_state["fleets"][fleet_index] = fleet
 	return add_message(next_state, "舰队任务已更新", "%s 当前任务调整为 %s。" % [str(fleet.get("name", "玩家舰队")), fleet_mission_label(mission)], "SYSTEM")
@@ -1286,6 +1304,8 @@ static func split_fleet(state: Dictionary, fleet_id: String) -> Dictionary:
 	var fleet: Dictionary = next_state["fleets"][fleet_index]
 	if fleet.get("ownerId", "") != "f_player":
 		return next_state
+	if str(fleet.get("mission", "IDLE")) == "COLONIZING":
+		return add_message(next_state, "分舰队失败", "%s 正在殖民部署，部署完成前无法拆分。" % str(fleet.get("name", "玩家舰队")), "SYSTEM")
 	var ships: Array = fleet.get("ships", [])
 	if ships.size() < 2:
 		return add_message(next_state, "分舰队失败", "舰队至少需要 2 艘舰船才能执行分舰队。", "SYSTEM")
@@ -1317,6 +1337,9 @@ static func merge_player_fleets(state: Dictionary, system_id: String) -> Diction
 	var player_fleets: Array = player_fleets_in_system(next_state, system_id, "f_player")
 	if player_fleets.size() < 2:
 		return add_message(next_state, "合并舰队失败", "同一星系内至少需要 2 支玩家舰队才能执行合并。", "SYSTEM")
+	for fleet: Dictionary in player_fleets:
+		if str(fleet.get("mission", "IDLE")) == "COLONIZING":
+			return add_message(next_state, "合并舰队失败", "%s 正在殖民部署，部署完成前无法合并。" % str(fleet.get("name", "玩家舰队")), "SYSTEM")
 	var keeper_id: String = str(player_fleets[0].get("id", ""))
 	var keeper_index: int = find_fleet_index(next_state, keeper_id)
 	var merged_ships: Array = []
@@ -1358,13 +1381,13 @@ static func queue_structure(state: Dictionary, system_id: String, building_type:
 	if blueprint.is_empty():
 		return next_state
 	if int(target_system.get("buildings", []).size()) + queued_building_count_for_system(next_state, system_id) >= int(target_system.get("buildingSlots", 0)):
-		return next_state
+		return add_message(next_state, "建筑排队失败", "%s 的建筑格位已满，无法继续加入新建筑。" % target_system.get("name", system_id), "SYSTEM")
 	for building: Dictionary in target_system.get("buildings", []):
 		if building.get("type", "") == building_type and building_type == "SHIPYARD":
-			return next_state
+			return add_message(next_state, "建筑排队失败", "%s 已拥有太空船坞，无法重复建造。" % target_system.get("name", system_id), "SYSTEM")
 	for item: Dictionary in next_state.get("constructionQueue", []):
 		if item.get("systemId", "") == system_id and item.get("targetId", "") == building_type:
-			return next_state
+			return add_message(next_state, "建筑排队失败", "%s 已在当前建造队列中。" % blueprint.get("name", building_type), "SYSTEM")
 	if not can_afford(player.get("resources", {}), blueprint.get("cost", {})):
 		return add_message(next_state, "建筑排队失败", "资源不足，无法将该建筑加入建造队列。", "SYSTEM")
 	for faction_index: int in range(next_state["factions"].size()):
@@ -1403,9 +1426,9 @@ static func queue_ship_construction(state: Dictionary, system_id: String, ship_t
 			has_shipyard = true
 			break
 	if not has_shipyard:
-		return next_state
+		return add_message(next_state, "舰船排队失败", "%s 尚未建成太空船坞，无法建造舰船。" % target_system.get("name", system_id), "SYSTEM")
 	if not available_ship_types(next_state).has(ship_type):
-		return next_state
+		return add_message(next_state, "舰船排队失败", "当前科技尚未解锁该舰船。", "SYSTEM")
 	var cost: Dictionary = ship_cost(ship_type, next_state, player.get("id", ""))
 	if not can_afford(player.get("resources", {}), cost):
 		return add_message(next_state, "舰船排队失败", "资源不足，无法开始建造该舰船。", "SYSTEM")
@@ -3214,6 +3237,8 @@ static func move_fleet(state: Dictionary, fleet_id: String, target_system_id: St
 			break
 	if fleet_index == -1 or fleet.get("ownerId", "") != player.get("id", ""):
 		return next_state
+	if str(fleet.get("mission", "IDLE")) == "COLONIZING":
+		return add_message(next_state, "舰队正在殖民部署", "%s 正在建立殖民据点，部署完成前无法移动。" % str(fleet.get("name", "舰队")), "SYSTEM")
 	if int(fleet.get("movementCooldown", 0)) > 0:
 		return add_message(next_state, "舰队仍在航行", "%s 仍处于航行冷却中，还需 %s 回合才能再次移动。" % [str(fleet.get("name", "舰队")), str(fleet.get("movementCooldown", 0))], "SYSTEM")
 	if not connected_to(next_state, fleet.get("systemId", "")).has(target_system_id):
@@ -3286,8 +3311,11 @@ static func explore_system(state: Dictionary, fleet_id: String, system_id: Strin
 			break
 	if fleet.is_empty() or fleet.get("ownerId", "") != player.get("id", ""):
 		return next_state
-	if fleet.get("systemId", "") != system_id and not connected_to(next_state, fleet.get("systemId", "")).has(system_id):
+	var fleet_at_target: bool = str(fleet.get("systemId", "")) == system_id
+	if not fleet_at_target and not connected_to(next_state, str(fleet.get("systemId", ""))).has(system_id):
 		return next_state
+	if not fleet_at_target:
+		return _scout_adjacent_system(next_state, fleet, system_id)
 	for system_index: int in range(next_state["starSystems"].size()):
 		var system: Dictionary = next_state["starSystems"][system_index]
 		if system.get("id", "") != system_id or system.get("visibilityLevel", "") == "FULL":
@@ -3302,6 +3330,18 @@ static func explore_system(state: Dictionary, fleet_id: String, system_id: Strin
 				next_state["starSystems"][system_index] = adjacent
 	next_state = add_message(next_state, "完成探索", "%s 已完成对目标星系的侦察，周边情报同步更新。" % fleet.get("name", ""), "EVENT")
 	next_state = resolve_player_system_event(next_state, system_id)
+	next_state = refresh_player_visibility(next_state)
+	return assess_game_status(next_state)
+
+static func _scout_adjacent_system(state: Dictionary, fleet: Dictionary, system_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	for system_index: int in range(next_state["starSystems"].size()):
+		var system: Dictionary = next_state["starSystems"][system_index]
+		if system.get("id", "") == system_id and system.get("visibilityLevel", "") == "HIDDEN":
+			system["visibilityLevel"] = "PARTIAL"
+			next_state["starSystems"][system_index] = system
+			break
+	next_state = add_message(next_state, "远程侦察", "%s 已完成相邻星系的远程扫描；事件奖励需要舰队抵达后才能结算。" % fleet.get("name", ""), "EVENT")
 	next_state = refresh_player_visibility(next_state)
 	return assess_game_status(next_state)
 
@@ -3914,6 +3954,88 @@ static func orchid_ai_turn(state: Dictionary) -> Dictionary:
 			next_state = update_diplomatic_profile(next_state, "f_orchid", "firm", -1, "在安全压力上升时准备采取更强硬的威慑立场。")
 	return next_state
 
+static func process_configured_ai_turns(state: Dictionary) -> Dictionary:
+	var next_state: Dictionary = merchant_ai_turn(state)
+	next_state = orchid_ai_turn(next_state)
+	for faction: Dictionary in next_state.get("factions", []):
+		var faction_id: String = str(faction.get("id", ""))
+		if faction_id == "f_player":
+			continue
+		next_state = _process_generic_configured_ai_faction(next_state, faction_id)
+	return next_state
+
+static func _process_generic_configured_ai_faction(state: Dictionary, faction_id: String) -> Dictionary:
+	var next_state: Dictionary = duplicate_state(state)
+	var faction: Dictionary = get_faction_by_id(next_state, faction_id)
+	if faction.is_empty():
+		return next_state
+	var owned_system: Dictionary = {}
+	for system: Dictionary in next_state.get("starSystems", []):
+		if str(system.get("ownerId", "")) == faction_id:
+			owned_system = system
+			break
+	if not owned_system.is_empty():
+		var profile: String = "AGGRESSIVE" if float(faction.get("personality", {}).get("aggression", 4.0)) >= 6.0 else "DEFENSIVE" if str(faction.get("victoryFocus", "")) == "DIPLOMACY" else "BALANCED"
+		var build_type: String = choose_ai_building_priority(next_state, faction_id, owned_system, profile)
+		var blueprint: Dictionary = find_building_blueprint(build_type)
+		if can_queue_structure_for_ai(next_state, faction_id, str(owned_system.get("id", "")), blueprint):
+			next_state = queue_structure_for_ai(next_state, faction_id, str(owned_system.get("id", "")), blueprint, "AI 安排建设", "%s 在 %s 安排 %s，强化长期发展。" % [faction.get("name", faction_id), owned_system.get("name", ""), blueprint.get("name", build_type)])
+			next_state = append_ai_action_record(next_state, faction_id, "ECONOMIC_BUILD", str(owned_system.get("id", "")), "%s 开始建设 %s。" % [faction.get("name", faction_id), blueprint.get("name", build_type)])
+	var fleet: Dictionary = {}
+	for entry: Dictionary in next_state.get("fleets", []):
+		if str(entry.get("ownerId", "")) == faction_id:
+			fleet = entry
+			break
+	if not fleet.is_empty():
+		var current_system_id: String = str(fleet.get("systemId", ""))
+		var target_system: Dictionary = _best_adjacent_ai_target(next_state, faction_id, current_system_id)
+		if not target_system.is_empty() and int(fleet.get("movementCooldown", 0)) <= 0:
+			var target_id: String = str(target_system.get("id", ""))
+			for fleet_index: int in range(next_state.get("fleets", []).size()):
+				var movable: Dictionary = next_state["fleets"][fleet_index]
+				if str(movable.get("id", "")) != str(fleet.get("id", "")):
+					continue
+				var travel_cost: int = lane_traversal_cost(next_state, current_system_id, target_id)
+				movable["systemId"] = target_id
+				movable["movementCooldown"] = max(0, travel_cost - 1)
+				movable["lastTraversalCost"] = travel_cost
+				next_state["fleets"][fleet_index] = movable
+				fleet = movable
+				break
+			next_state = append_ai_action_record(next_state, faction_id, "FLEET_PRESSURE", target_id, "%s 舰队向 %s 前出，争夺航道主动权。" % [faction.get("name", faction_id), target_system.get("name", target_id)])
+		var occupied_system: Dictionary = {}
+		for system: Dictionary in next_state.get("starSystems", []):
+			if str(system.get("id", "")) == str(fleet.get("systemId", "")):
+				occupied_system = system
+				break
+		if not occupied_system.is_empty() and occupied_system.get("ownerId", null) == null and can_afford(get_faction_by_id(next_state, faction_id).get("resources", {}), colony_mode_data("RESOURCE_OUTPOST").get("cost", COLONY_COST)):
+			next_state = start_colony_for_faction(next_state, faction_id, str(occupied_system.get("id", "")), "RESOURCE_OUTPOST", "AI 启动殖民", "%s 在 %s 建立资源前哨。" % [faction.get("name", faction_id), occupied_system.get("name", "")])
+			next_state = append_ai_action_record(next_state, faction_id, "COLONY_STARTED", str(occupied_system.get("id", "")), "%s 在 %s 启动殖民前哨。" % [faction.get("name", faction_id), occupied_system.get("name", "")])
+	if int(next_state.get("turn", 1)) % 3 == 0:
+		next_state = append_ai_action_record(next_state, faction_id, "DIPLOMATIC_SIGNAL", "f_player", "%s 发布新的战略姿态信号，要求周边文明重新评估边境行为。" % faction.get("name", faction_id))
+	return next_state
+
+static func _best_adjacent_ai_target(state: Dictionary, faction_id: String, system_id: String) -> Dictionary:
+	var best: Dictionary = {}
+	for connected_id: String in connected_to(state, system_id):
+		var candidate: Dictionary = {}
+		for system: Dictionary in state.get("starSystems", []):
+			if str(system.get("id", "")) == connected_id:
+				candidate = system
+				break
+		if candidate.is_empty() or str(candidate.get("ownerId", "")) == faction_id:
+			continue
+		if candidate.get("ownerId", null) != null and str(candidate.get("ownerId", "")) != "f_player":
+			continue
+		if best.is_empty():
+			best = candidate
+			continue
+		var candidate_value: int = int(candidate.get("habitability", 0)) + int(candidate.get("resources", {}).get("minerals", 0)) * 3 + int(candidate.get("resources", {}).get("energy", 0)) * 2
+		var best_value: int = int(best.get("habitability", 0)) + int(best.get("resources", {}).get("minerals", 0)) * 3 + int(best.get("resources", {}).get("energy", 0)) * 2
+		if candidate_value > best_value:
+			best = candidate
+	return best
+
 static func process_turn(state: Dictionary, merchant_decision: Dictionary = {}) -> Dictionary:
 	var next_state: Dictionary = duplicate_state(state)
 	if next_state.get("status", "") != "PLAYING":
@@ -3939,8 +4061,11 @@ static func process_turn(state: Dictionary, merchant_decision: Dictionary = {}) 
 	next_state = update_ascension_progress(next_state)
 	if research_data.get("completedName", null) != null:
 		next_state = add_message(next_state, "研究完成", "%s 已完成研究并立即生效。" % research_data.get("completedName", ""), "SYSTEM")
-	next_state = merchant_ai_turn(next_state, merchant_decision)
-	next_state = orchid_ai_turn(next_state)
+	if merchant_decision.is_empty():
+		next_state = process_configured_ai_turns(next_state)
+	else:
+		next_state = merchant_ai_turn(next_state, merchant_decision)
+		next_state = orchid_ai_turn(next_state)
 	next_state = simulate_ai_backchannel(next_state)
 	next_state = simulate_ai_proposals(next_state)
 	next_state = append_relationship_snapshots(next_state)

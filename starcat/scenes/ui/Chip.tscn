@@ -4,33 +4,48 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("1_chip")
-texture_margin_left = 44.0
-texture_margin_top = 44.0
-texture_margin_right = 44.0
-texture_margin_bottom = 44.0
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="Chip" type="PanelContainer"]
 custom_minimum_size = Vector2(120, 56)
 theme_override_styles/panel = SubResource("1")
 
-[node name="Content" type="VBoxContainer" parent="."]
+[node name="Content" type="HBoxContainer" parent="."]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/separation = 2
+theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="Content"]
-custom_minimum_size = Vector2(0, 16)
+[node name="Icon" type="TextureRect" parent="Content"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 4
+stretch_mode = 5
+
+[node name="TextBox" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Title" type="Label" parent="Content/TextBox"]
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 text = "标题"
-theme_override_colors/font_color = Color(0.45098, 0.819608, 0.956863, 1)
-theme_override_font_sizes/font_size = 13
-autowrap_mode = 3
+theme_override_colors/font_color = Color(0.95, 0.36, 0.08, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 0
 
-[node name="Value" type="Label" parent="Content"]
-custom_minimum_size = Vector2(0, 24)
+[node name="Value" type="Label" parent="Content/TextBox"]
+custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 text = "数值"
-theme_override_colors/font_color = Color(0.952941, 0.984314, 1, 1)
-theme_override_font_sizes/font_size = 22
-autowrap_mode = 3
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 20
+autowrap_mode = 0

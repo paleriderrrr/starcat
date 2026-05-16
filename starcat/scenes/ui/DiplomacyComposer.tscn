@@ -6,17 +6,25 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("2_input")
-texture_margin_left = 44.0
-texture_margin_top = 44.0
-texture_margin_right = 44.0
-texture_margin_bottom = 44.0
+texture_margin_left = 28.0
+texture_margin_top = 28.0
+texture_margin_right = 28.0
+texture_margin_bottom = 28.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [sub_resource type="StyleBoxTexture" id="2"]
 texture = ExtResource("3_focus")
-texture_margin_left = 44.0
-texture_margin_top = 44.0
-texture_margin_right = 44.0
-texture_margin_bottom = 44.0
+texture_margin_left = 28.0
+texture_margin_top = 28.0
+texture_margin_right = 28.0
+texture_margin_bottom = 28.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="DiplomacyComposer" type="VBoxContainer"]
 theme_override_constants/separation = 10
@@ -30,8 +38,8 @@ theme_override_constants/v_separation = 8
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_colors/font_color = Color(0.929412, 0.968627, 1, 1)
-theme_override_colors/caret_color = Color(0.545098, 0.898039, 0.980392, 1)
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/caret_color = Color(0.95, 0.36, 0.08, 1)
 theme_override_colors/font_placeholder_color = Color(0.470588, 0.611765, 0.709804, 1)
 theme_override_styles/normal = SubResource("1")
 theme_override_styles/focus = SubResource("2")
@@ -46,9 +54,9 @@ custom_minimum_size = Vector2(144, 44)
 layout_mode = 2
 focus_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_colors/font_color = Color(0.929412, 0.968627, 1, 1)
-theme_override_colors/font_hover_color = Color(0.952941, 0.988235, 1, 1)
-theme_override_colors/font_focus_color = Color(0.952941, 0.988235, 1, 1)
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.36, 0.08, 1)
+theme_override_colors/font_focus_color = Color(0.95, 0.36, 0.08, 1)
 theme_override_styles/normal = SubResource("1")
 theme_override_styles/hover = SubResource("2")
 theme_override_styles/pressed = SubResource("2")

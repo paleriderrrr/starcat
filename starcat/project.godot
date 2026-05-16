@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 GameState="*res://scripts/autoload/GameState.gd"
 ApiClient="*res://scripts/autoload/ApiClient.gd"
+AudioManager="*res://scripts/autoload/AudioManager.gd"
 
 [display]
 
@@ -26,6 +27,10 @@ window/size/viewport_width=1600
 window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[gui]
+
+theme/custom_font="res://assets/fonts/SourceHanSansSC-Regular.otf"
 
 [input]
 

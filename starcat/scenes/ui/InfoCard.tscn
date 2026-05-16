@@ -4,10 +4,14 @@
 
 [sub_resource type="StyleBoxTexture" id="1"]
 texture = ExtResource("1_panel")
-texture_margin_left = 46.0
-texture_margin_top = 46.0
-texture_margin_right = 46.0
-texture_margin_bottom = 46.0
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+content_margin_left = 18.0
+content_margin_top = 12.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
 
 [node name="InfoCard" type="PanelContainer"]
 theme_override_styles/panel = SubResource("1")

@@ -2,6 +2,8 @@ extends RefCounted
 
 class_name InitialData
 
+const MIN_PLAYER_STARTING_CAPITAL_DISTANCE: float = 16.0
+
 static func empty_resources() -> Dictionary:
 	return {"food": 0, "minerals": 0, "industry": 0, "energy": 0}
 
@@ -197,50 +199,114 @@ static func default_diplomatic_profile(archetype: String, preferred_visibility: 
 		"lastUpdatedTurn": 1,
 	}
 
+static func _cat_ship_paths(slug: String) -> Dictionary:
+	var path: String = "res://assets/factions/cats/ships/%s.png" % slug
+	return {
+		"CORVETTE": path,
+		"DESTROYER": path,
+		"CRUISER": path,
+		"BATTLESHIP": path
+	}
+
+static func civilization_visual_bundle(visual_id: String) -> Dictionary:
+	var bundles: Dictionary = {
+		"russian_blue_command": {
+			"visualId": "russian_blue_command",
+			"portraitPath": "res://assets/factions/cats/portraits/russian_blue_command.png",
+			"emblemPath": "res://assets/factions/cats/emblems/russian_blue_command.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/russian_blue_command.png",
+			"shipArtPaths": _cat_ship_paths("russian_blue_command"),
+			"visualSummary": "冷静旗舰系，擅长稳定指挥与远程统筹。"
+		},
+		"ragdoll_diplomatic": {
+			"visualId": "ragdoll_diplomatic",
+			"portraitPath": "res://assets/factions/cats/portraits/ragdoll_diplomatic.png",
+			"emblemPath": "res://assets/factions/cats/emblems/ragdoll_diplomatic.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/ragdoll_diplomatic.png",
+			"shipArtPaths": _cat_ship_paths("ragdoll_diplomatic"),
+			"visualSummary": "柔和协约系，偏好中继网络与条约秩序。"
+		},
+		"bengal_tactical": {
+			"visualId": "bengal_tactical",
+			"portraitPath": "res://assets/factions/cats/portraits/bengal_tactical.png",
+			"emblemPath": "res://assets/factions/cats/emblems/bengal_tactical.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/bengal_tactical.png",
+			"shipArtPaths": _cat_ship_paths("bengal_tactical"),
+			"visualSummary": "高压突击系，强调先手压制与边境推进。"
+		},
+		"maine_coon_imperial": {
+			"visualId": "maine_coon_imperial",
+			"portraitPath": "res://assets/factions/cats/portraits/maine_coon_imperial.png",
+			"emblemPath": "res://assets/factions/cats/emblems/maine_coon_imperial.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/maine_coon_imperial.png",
+			"shipArtPaths": _cat_ship_paths("maine_coon_imperial"),
+			"visualSummary": "厚重王权系，以大型主力舰与等级秩序见长。"
+		},
+		"black_cat_stealth": {
+			"visualId": "black_cat_stealth",
+			"portraitPath": "res://assets/factions/cats/portraits/black_cat_stealth.png",
+			"emblemPath": "res://assets/factions/cats/emblems/black_cat_stealth.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/black_cat_stealth.png",
+			"shipArtPaths": _cat_ship_paths("black_cat_stealth"),
+			"visualSummary": "隐秘渗透系，重视情报、伏击与精确切入。"
+		},
+		"orange_tabby_industrial": {
+			"visualId": "orange_tabby_industrial",
+			"portraitPath": "res://assets/factions/cats/portraits/orange_tabby_industrial.png",
+			"emblemPath": "res://assets/factions/cats/emblems/orange_tabby_industrial.png",
+			"catalogShipPath": "res://assets/factions/cats/ships/orange_tabby_industrial.png",
+			"shipArtPaths": _cat_ship_paths("orange_tabby_industrial"),
+			"visualSummary": "工业后勤系，依赖稳定产线与舰队补给能力。"
+		}
+	}
+	return bundles.get(visual_id, {})
+
 static func civilization_pool() -> Array:
 	return [
 		{
-			"template_id": "merchant_compact",
-			"name": "商路联盟",
-			"leaderName": "金须阁下",
-			"type": "COMMERCIAL_FEDERATION",
-			"color": "2CB67D",
-			"personality": {"aggression": 3.0, "paranoia": 7.0, "greed": 8.0, "loyalty": 6.0, "rationality": 8.0},
-			"resourceBias": {"food": 220, "minerals": 240, "industry": 140, "energy": 140},
-			"resourceRates": {"food": 0, "minerals": 5, "industry": 0, "energy": -1},
-			"population": 220,
-			"militaryPower": 80,
+			"template_id": "blue_command",
+			"name": "蓝棱司令部",
+			"leaderName": "霜瞳司令",
+			"type": "STRATEGIC_COMMAND",
+			"color": "3DA9FC",
+			"personality": {"aggression": 4.0, "paranoia": 5.0, "greed": 4.0, "loyalty": 7.0, "rationality": 9.0},
+			"resourceBias": {"food": 230, "minerals": 210, "industry": 180, "energy": 180},
+			"resourceRates": {"food": 4, "minerals": 1, "industry": 1, "energy": -1},
+			"population": 300,
+			"militaryPower": 92,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "MERCHANT_PRAGMATIST",
-			"preferredVisibility": "SECRET",
-			"publicPersona": "礼貌、精明、重视利益",
-			"privateAgenda": "通过秘密交易建立边境影响力",
-			"behaviorTags": ["trade", "smuggling", "commercial_pressure"],
-			"victoryFocus": "ECONOMY"
+			"diplomaticArchetype": "CAT_SCIENCE",
+			"preferredVisibility": "PUBLIC",
+			"publicPersona": "理性、克制、重视协作",
+			"privateAgenda": "优先建立安全缓冲与科研优势",
+			"behaviorTags": ["science", "command", "balanced_response"],
+			"victoryFocus": "SCIENCE",
+			"visualId": "russian_blue_command"
 		},
 		{
-			"template_id": "orchid_consensus",
-			"name": "兰心公约",
-			"leaderName": "兰枢议长",
+			"template_id": "ragdoll_accord",
+			"name": "白绒议约",
+			"leaderName": "澄瞳议长",
 			"type": "DIPLOMATIC_LEAGUE",
-			"color": "F4B860",
+			"color": "6CD6C3",
 			"personality": {"aggression": 2.0, "paranoia": 6.0, "greed": 4.0, "loyalty": 8.0, "rationality": 8.0},
 			"resourceBias": {"food": 210, "minerals": 180, "industry": 160, "energy": 170},
 			"resourceRates": {"food": 2, "minerals": 2, "industry": 3, "energy": 1},
 			"population": 210,
 			"militaryPower": 72,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "ORCHID_MEDIATOR",
+			"diplomaticArchetype": "RAGDOLL_MEDIATOR",
 			"preferredVisibility": "ENCRYPTED",
 			"publicPersona": "正式、克制、偏好条约秩序",
 			"privateAgenda": "避免战争失控并寻求平衡各方",
 			"behaviorTags": ["diplomacy", "mediation", "defense"],
-			"victoryFocus": "DIPLOMACY"
+			"victoryFocus": "DIPLOMACY",
+			"visualId": "ragdoll_diplomatic"
 		},
 		{
-			"template_id": "frontier_legion",
-			"name": "边炬军团",
-			"leaderName": "铁烬统帅",
+			"template_id": "bengal_spear",
+			"name": "斑曜战线",
+			"leaderName": "烬爪统帅",
 			"type": "MILITARY_HEGEMONY",
 			"color": "E53170",
 			"personality": {"aggression": 8.0, "paranoia": 6.0, "greed": 4.0, "loyalty": 7.0, "rationality": 5.0},
@@ -249,153 +315,158 @@ static func civilization_pool() -> Array:
 			"population": 240,
 			"militaryPower": 96,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "FRONTIER_GENERAL",
+			"diplomaticArchetype": "BENGAL_SPEARHEAD",
 			"preferredVisibility": "PUBLIC",
 			"publicPersona": "强硬、直白、崇尚先手优势",
 			"privateAgenda": "通过高压部署夺取边境主导权",
 			"behaviorTags": ["military", "expansion", "ultimatum"],
-			"victoryFocus": "DOMINATION"
+			"victoryFocus": "DOMINATION",
+			"visualId": "bengal_tactical"
 		},
 		{
-			"template_id": "helios_synod",
-			"name": "赫利俄斯神议庭",
-			"leaderName": "圣焰执灯者",
-			"type": "THEOCRATIC_ORDER",
-			"color": "FF8906",
-			"personality": {"aggression": 5.0, "paranoia": 5.0, "greed": 3.0, "loyalty": 9.0, "rationality": 6.0},
-			"resourceBias": {"food": 200, "minerals": 170, "industry": 150, "energy": 210},
-			"resourceRates": {"food": 2, "minerals": 1, "industry": 2, "energy": 4},
-			"population": 215,
-			"militaryPower": 78,
+			"template_id": "maine_crown",
+			"name": "王冠重庭",
+			"leaderName": "金鬃摄政",
+			"type": "IMPERIAL_COURT",
+			"color": "D4B26A",
+			"personality": {"aggression": 6.0, "paranoia": 5.0, "greed": 4.0, "loyalty": 9.0, "rationality": 7.0},
+			"resourceBias": {"food": 200, "minerals": 210, "industry": 210, "energy": 150},
+			"resourceRates": {"food": 1, "minerals": 3, "industry": 4, "energy": 0},
+			"population": 260,
+			"militaryPower": 100,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "ZEALOTIC_DIPLOMAT",
+			"diplomaticArchetype": "IMPERIAL_REGENT",
 			"preferredVisibility": "PUBLIC",
-			"publicPersona": "庄严、克己、强调信念共同体",
-			"privateAgenda": "借助价值同盟塑造星域秩序",
-			"behaviorTags": ["faith", "unity", "soft_power"],
-			"victoryFocus": "ASCENSION"
+			"publicPersona": "威严、守序、强调等级与荣誉",
+			"privateAgenda": "以主力舰与古老权威重建区域秩序",
+			"behaviorTags": ["imperial", "capital_ships", "honor"],
+			"victoryFocus": "DOMINATION",
+			"visualId": "maine_coon_imperial"
 		},
 		{
-			"template_id": "cinder_brokerage",
-			"name": "烬湾经纪团",
-			"leaderName": "灰羽总经纪",
-			"type": "CORPORATE_CARTEL",
-			"color": "3DA9FC",
-			"personality": {"aggression": 4.0, "paranoia": 8.0, "greed": 9.0, "loyalty": 4.0, "rationality": 8.0},
-			"resourceBias": {"food": 170, "minerals": 250, "industry": 150, "energy": 160},
-			"resourceRates": {"food": -1, "minerals": 6, "industry": 1, "energy": 1},
-			"population": 205,
-			"militaryPower": 74,
+			"template_id": "black_veil",
+			"name": "夜幕潜群",
+			"leaderName": "深瞳监察者",
+			"type": "STEALTH_DIRECTORATE",
+			"color": "3A86FF",
+			"personality": {"aggression": 4.0, "paranoia": 9.0, "greed": 5.0, "loyalty": 5.0, "rationality": 9.0},
+			"resourceBias": {"food": 160, "minerals": 160, "industry": 150, "energy": 220},
+			"resourceRates": {"food": -1, "minerals": 1, "industry": 1, "energy": 4},
+			"population": 180,
+			"militaryPower": 72,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "BLACK_MARKET_BROKER",
+			"diplomaticArchetype": "BLACK_VEIL",
 			"preferredVisibility": "SECRET",
-			"publicPersona": "客套、冷静、把一切都当作筹码",
-			"privateAgenda": "操纵黑市与航道保险垄断利润",
-			"behaviorTags": ["trade", "intel", "sanctions"],
-			"victoryFocus": "ECONOMY"
+			"publicPersona": "安静、礼貌、极少暴露真实意图",
+			"privateAgenda": "通过情报渗透与快速突袭锁定关键节点",
+			"behaviorTags": ["stealth", "intelligence", "sabotage"],
+			"victoryFocus": "SCIENCE",
+			"visualId": "black_cat_stealth"
 		},
 		{
-			"template_id": "verdant_wardens",
-			"name": "青穹守林者",
-			"leaderName": "叶冠护民官",
-			"type": "ECOLOGICAL_COMMONWEALTH",
-			"color": "7FBA00",
-			"personality": {"aggression": 2.0, "paranoia": 4.0, "greed": 2.0, "loyalty": 8.0, "rationality": 8.0},
-			"resourceBias": {"food": 250, "minerals": 150, "industry": 120, "energy": 170},
-			"resourceRates": {"food": 6, "minerals": 0, "industry": 1, "energy": 1},
-			"population": 235,
-			"militaryPower": 66,
+			"template_id": "orange_ring",
+			"name": "齿轮橘环",
+			"leaderName": "铜须总管",
+			"type": "INDUSTRIAL_RING",
+			"color": "F28C38",
+			"personality": {"aggression": 3.0, "paranoia": 6.0, "greed": 8.0, "loyalty": 6.0, "rationality": 8.0},
+			"resourceBias": {"food": 220, "minerals": 240, "industry": 210, "energy": 150},
+			"resourceRates": {"food": 0, "minerals": 5, "industry": 2, "energy": -1},
+			"population": 220,
+			"militaryPower": 82,
 			"technologyLevel": 1,
-			"diplomaticArchetype": "ECO_STEWARD",
-			"preferredVisibility": "PUBLIC",
-			"publicPersona": "温和、耐心、强调长期平衡",
-			"privateAgenda": "通过生态依赖网络绑定周边势力",
-			"behaviorTags": ["growth", "colonization", "stability"],
-			"victoryFocus": "EXPANSION"
-		},
-		{
-			"template_id": "mirror_directorate",
-			"name": "镜潮总署",
-			"leaderName": "深帷执政官",
-			"type": "INTELLIGENCE_DIRECTORATE",
-			"color": "6246EA",
-			"personality": {"aggression": 4.0, "paranoia": 9.0, "greed": 5.0, "loyalty": 7.0, "rationality": 9.0},
-			"resourceBias": {"food": 180, "minerals": 160, "industry": 150, "energy": 220},
-			"resourceRates": {"food": 0, "minerals": 1, "industry": 2, "energy": 5},
-			"population": 190,
-			"militaryPower": 70,
-			"technologyLevel": 1,
-			"diplomaticArchetype": "INTEL_COORDINATOR",
-			"preferredVisibility": "ENCRYPTED",
-			"publicPersona": "克制、模糊、善于保留余地",
-			"privateAgenda": "用截获、误导和内线塑造可控危机",
-			"behaviorTags": ["intel", "encryption", "backchannel"],
-			"victoryFocus": "DIPLOMACY"
-		},
-		{
-			"template_id": "aurora_collective",
-			"name": "极光共同体",
-			"leaderName": "序列发言人",
-			"type": "SCIENCE_COLLECTIVE",
-			"color": "00B5D8",
-			"personality": {"aggression": 2.0, "paranoia": 5.0, "greed": 4.0, "loyalty": 7.0, "rationality": 10.0},
-			"resourceBias": {"food": 190, "minerals": 170, "industry": 150, "energy": 210},
-			"resourceRates": {"food": 1, "minerals": 1, "industry": 2, "energy": 4},
-			"population": 225,
-			"militaryPower": 68,
-			"technologyLevel": 1,
-			"diplomaticArchetype": "RESEARCH_COORDINATOR",
-			"preferredVisibility": "ENCRYPTED",
-			"publicPersona": "理性、开放、偏好可验证承诺",
-			"privateAgenda": "优先建立技术优势与联合研究网络",
-			"behaviorTags": ["research", "treaty", "forecasting"],
-			"victoryFocus": "ASCENSION"
-		},
-		{
-			"template_id": "ashen_nomads",
-			"name": "灰烬流亡舰群",
-			"leaderName": "漂泊女王",
-			"type": "EXILE_FLEET",
-			"color": "94A1B2",
-			"personality": {"aggression": 6.0, "paranoia": 8.0, "greed": 5.0, "loyalty": 8.0, "rationality": 6.0},
-			"resourceBias": {"food": 160, "minerals": 180, "industry": 180, "energy": 170},
-			"resourceRates": {"food": 0, "minerals": 2, "industry": 3, "energy": 1},
-			"population": 200,
-			"militaryPower": 88,
-			"technologyLevel": 1,
-			"diplomaticArchetype": "REFUGEE_COMMAND",
-			"preferredVisibility": "SECRET",
-			"publicPersona": "警惕、坚韧、以生存优先",
-			"privateAgenda": "为舰群寻找长期停泊地并排除威胁",
-			"behaviorTags": ["fleet", "pressure", "migration"],
-			"victoryFocus": "DOMINATION"
-		},
-		{
-			"template_id": "opal_assembly",
-			"name": "欧泊议约会",
-			"leaderName": "多席协调官",
-			"type": "FEDERAL_ASSEMBLY",
-			"color": "C97BFB",
-			"personality": {"aggression": 3.0, "paranoia": 4.0, "greed": 4.0, "loyalty": 9.0, "rationality": 8.0},
-			"resourceBias": {"food": 210, "minerals": 170, "industry": 170, "energy": 170},
-			"resourceRates": {"food": 2, "minerals": 1, "industry": 3, "energy": 1},
-			"population": 230,
-			"militaryPower": 70,
-			"technologyLevel": 1,
-			"diplomaticArchetype": "CHARTER_BUILDER",
-			"preferredVisibility": "PUBLIC",
-			"publicPersona": "稳健、程序化、强调共同章程",
-			"privateAgenda": "把区域协定逐步固化成长期制度",
-			"behaviorTags": ["diplomacy", "charter", "council"],
-			"victoryFocus": "DIPLOMACY"
+			"diplomaticArchetype": "INDUSTRIAL_QUARTERMASTER",
+			"preferredVisibility": "RESTRICTED",
+			"publicPersona": "务实、耐心、重视产线与成交效率",
+			"privateAgenda": "通过物流与工业产能掌握边境贸易节奏",
+			"behaviorTags": ["trade", "industry", "logistics"],
+			"victoryFocus": "ECONOMY",
+			"visualId": "orange_tabby_industrial"
 		}
 	]
 
 static func select_ai_civilization_templates() -> Array:
 	var pool: Array = civilization_pool()
-	return [pool[0], pool[1]]
+	return [pool[5], pool[1]]
+
+static func default_game_setup_options() -> Dictionary:
+	return {
+		"player_template_id": "blue_command",
+		"map_scale": "STANDARD",
+		"difficulty": "STANDARD",
+		"opponent_count": 3
+	}
+
+static func map_scale_presets() -> Dictionary:
+	return {
+		"SKIRMISH": {"system_count": 10, "hyperlane_count": 10, "max_opponents": 2, "label": "边境冲突"},
+		"STANDARD": {"system_count": 18, "hyperlane_count": 22, "max_opponents": 3, "label": "标准星域"},
+		"GRAND": {"system_count": 26, "hyperlane_count": 32, "max_opponents": 5, "label": "宏大星图"}
+	}
+
+static func difficulty_presets() -> Dictionary:
+	return {
+		"CASUAL": {"label": "休闲", "ai_resource_multiplier": 0.85, "ai_aggression_bonus": -1.5, "ai_expansion_pressure": 0.75},
+		"STANDARD": {"label": "标准", "ai_resource_multiplier": 1.0, "ai_aggression_bonus": 0.0, "ai_expansion_pressure": 1.0},
+		"HARD": {"label": "困难", "ai_resource_multiplier": 1.25, "ai_aggression_bonus": 1.5, "ai_expansion_pressure": 1.35}
+	}
+
+static func normalize_game_setup_options(options: Dictionary) -> Dictionary:
+	var normalized: Dictionary = default_game_setup_options()
+	for key: String in options.keys():
+		normalized[key] = options.get(key)
+	var pool: Array = civilization_pool()
+	var template_ids: Array = []
+	for template: Dictionary in pool:
+		template_ids.append(str(template.get("template_id", "")))
+	if not template_ids.has(str(normalized.get("player_template_id", ""))):
+		normalized["player_template_id"] = "blue_command"
+	var scales: Dictionary = map_scale_presets()
+	if not scales.has(str(normalized.get("map_scale", ""))):
+		normalized["map_scale"] = "STANDARD"
+	var difficulties: Dictionary = difficulty_presets()
+	if not difficulties.has(str(normalized.get("difficulty", ""))):
+		normalized["difficulty"] = "STANDARD"
+	var scale_data: Dictionary = scales.get(str(normalized.get("map_scale", "STANDARD")), scales["STANDARD"])
+	var max_opponents: int = min(int(scale_data.get("max_opponents", 3)), max(1, pool.size() - 1))
+	normalized["opponent_count"] = clampi(int(normalized.get("opponent_count", 3)), 1, max_opponents)
+	return normalized
+
+static func _template_by_id(template_id: String) -> Dictionary:
+	for template: Dictionary in civilization_pool():
+		if str(template.get("template_id", "")) == template_id:
+			return template
+	return civilization_pool()[0]
+
+static func _select_ai_civilization_templates_for_setup(options: Dictionary) -> Array:
+	var pool: Array = civilization_pool()
+	var player_template_id: String = str(options.get("player_template_id", "blue_command"))
+	var selected: Array = []
+	for template: Dictionary in pool:
+		if str(template.get("template_id", "")) == player_template_id:
+			continue
+		selected.append(template)
+		if selected.size() >= int(options.get("opponent_count", 2)):
+			break
+	return selected
+
+static func _apply_difficulty_to_faction(faction: Dictionary, options: Dictionary) -> Dictionary:
+	var difficulty: Dictionary = difficulty_presets().get(str(options.get("difficulty", "STANDARD")), difficulty_presets()["STANDARD"])
+	var multiplier: float = float(difficulty.get("ai_resource_multiplier", 1.0))
+	var aggression_bonus: float = float(difficulty.get("ai_aggression_bonus", 0.0))
+	var adjusted: Dictionary = faction.duplicate(true)
+	var resources: Dictionary = adjusted.get("resources", {}).duplicate(true)
+	for key: String in resources.keys():
+		resources[key] = int(round(float(resources.get(key, 0)) * multiplier))
+	adjusted["resources"] = resources
+	var personality: Dictionary = adjusted.get("personality", {}).duplicate(true)
+	personality["aggression"] = clampf(float(personality.get("aggression", 4.0)) + aggression_bonus, 0.0, 10.0)
+	adjusted["personality"] = personality
+	adjusted["aiExpansionPressure"] = float(difficulty.get("ai_expansion_pressure", 1.0))
+	return adjusted
 
 static func build_ai_faction_from_template(runtime_id: String, capital_system_id: String, template: Dictionary) -> Dictionary:
+	var visual_bundle: Dictionary = civilization_visual_bundle(str(template.get("visualId", "")))
 	return {
 		"id": runtime_id,
 		"name": template.get("name", runtime_id),
@@ -419,20 +490,30 @@ static func build_ai_faction_from_template(runtime_id: String, capital_system_id
 		"behaviorTags": template.get("behaviorTags", []).duplicate(true),
 		"victoryFocus": template.get("victoryFocus", "BALANCED"),
 		"templateId": template.get("template_id", ""),
+		"visualId": visual_bundle.get("visualId", ""),
+		"portraitPath": visual_bundle.get("portraitPath", ""),
+		"emblemPath": visual_bundle.get("emblemPath", ""),
+		"shipArtPaths": visual_bundle.get("shipArtPaths", {}),
+		"catalogShipPath": visual_bundle.get("catalogShipPath", ""),
+		"visualSummary": visual_bundle.get("visualSummary", ""),
 		"isPlayer": false
 	}
 
-static func create_initial_state() -> Dictionary:
+static func create_initial_state(options: Dictionary = {}) -> Dictionary:
+	var setup_options: Dictionary = normalize_game_setup_options(options)
 	var catalog: Array = building_catalog()
-	var ai_templates: Array = select_ai_civilization_templates()
-	var merchant_faction: Dictionary = build_ai_faction_from_template("f_merchant", "sys_sirius", ai_templates[0])
-	var orchid_faction: Dictionary = build_ai_faction_from_template("f_orchid", "sys_orion", ai_templates[1])
+	var player_template: Dictionary = _template_by_id(str(setup_options.get("player_template_id", "blue_command")))
+	var player_visual_bundle: Dictionary = civilization_visual_bundle(str(player_template.get("visualId", "")))
+	var ai_templates: Array = _select_ai_civilization_templates_for_setup(setup_options)
+	var merchant_faction: Dictionary = _apply_difficulty_to_faction(build_ai_faction_from_template("f_merchant", "sys_sirius", ai_templates[0]), setup_options)
+	var orchid_faction: Dictionary = _apply_difficulty_to_faction(build_ai_faction_from_template("f_orchid", "sys_orion", ai_templates[1]), setup_options)
 	var merchant_name: String = merchant_faction.get("name", "AI 势力")
 	var orchid_name: String = orchid_faction.get("name", "AI 势力")
-	return {
+	var state: Dictionary = {
 		"turn": 1,
 		"era": "PIONEER",
 		"status": "PLAYING",
+		"setupOptions": setup_options.duplicate(true),
 		"objective": "军事 1/3 星系 | 外交 结盟+科研协定 | 科技飞升 未启动",
 		"victory_path": null,
 		"ascension_progress": 0,
@@ -460,19 +541,33 @@ static func create_initial_state() -> Dictionary:
 		"factions": [
 			{
 				"id": "f_player",
-				"name": "喵星文明",
-				"leaderName": "喵因斯坦",
-				"type": "TECHNOLOGY_ALLIANCE",
+				"name": player_template.get("name", "喵星文明"),
+				"leaderName": player_template.get("leaderName", "喵因斯坦"),
+				"type": player_template.get("type", "TECHNOLOGY_ALLIANCE"),
 				"capitalSystemId": "sys_cat_home",
-				"color": Color("7F5AF0"),
-				"personality": {"aggression": 4.0, "paranoia": 5.0, "greed": 5.0, "loyalty": 6.0, "rationality": 9.0},
+				"color": Color(player_template.get("color", "3DA9FC")),
+				"personality": player_template.get("personality", {}).duplicate(true),
 				"controlledSystems": ["sys_cat_home"],
-				"resources": {"food": 240, "minerals": 220, "industry": 180, "energy": 180},
-				"resourceRates": {"food": 5, "minerals": 0, "industry": 0, "energy": -2},
-				"population": 300,
-				"militaryPower": 90,
-				"technologyLevel": 1,
-				"diplomaticProfile": default_diplomatic_profile("CAT_SCIENCE", "PUBLIC", "理性、克制、重视协作", "优先建立安全缓冲与科研优势"),
+				"resources": player_template.get("resourceBias", empty_resources()).duplicate(true),
+				"resourceRates": player_template.get("resourceRates", empty_resources()).duplicate(true),
+				"population": int(player_template.get("population", 300)),
+				"militaryPower": int(player_template.get("militaryPower", 90)),
+				"technologyLevel": int(player_template.get("technologyLevel", 1)),
+				"diplomaticProfile": default_diplomatic_profile(
+					player_template.get("diplomaticArchetype", "CAT_SCIENCE"),
+					player_template.get("preferredVisibility", "PUBLIC"),
+					player_template.get("publicPersona", "理性、克制、重视协作"),
+					player_template.get("privateAgenda", "优先建立安全缓冲与科研优势")
+				),
+				"behaviorTags": player_template.get("behaviorTags", []).duplicate(true),
+				"victoryFocus": player_template.get("victoryFocus", "SCIENCE"),
+				"templateId": player_template.get("template_id", ""),
+				"visualId": player_visual_bundle.get("visualId", ""),
+				"portraitPath": player_visual_bundle.get("portraitPath", ""),
+				"emblemPath": player_visual_bundle.get("emblemPath", ""),
+				"shipArtPaths": player_visual_bundle.get("shipArtPaths", {}),
+				"catalogShipPath": player_visual_bundle.get("catalogShipPath", ""),
+				"visualSummary": player_visual_bundle.get("visualSummary", ""),
 				"isPlayer": true
 			},
 			merchant_faction,
@@ -491,7 +586,7 @@ static func create_initial_state() -> Dictionary:
 				"ownerId": "f_player",
 				"population": 300,
 				"visibilityLevel": "FULL",
-				"note": "喵星文明的母星，拥有完善的工业与科研基础。",
+				"note": "%s 的母星，拥有完善的工业与科研基础。" % str(player_template.get("name", "喵星文明")),
 				"habitability": 94,
 				"colonyStage": "CORE",
 				"colonizationProgress": 100.0,
@@ -763,11 +858,328 @@ static func create_initial_state() -> Dictionary:
 			}
 		]
 	}
+	return _finalize_configured_initial_state(state, setup_options, catalog, ai_templates)
 
 static func _make_building(building_id: String, blueprint: Dictionary) -> Dictionary:
 	var entry: Dictionary = blueprint.duplicate(true)
 	entry["id"] = building_id
 	return entry
+
+static func _finalize_configured_initial_state(state: Dictionary, options: Dictionary, catalog: Array, ai_templates: Array) -> Dictionary:
+	state["starSystems"] = _build_configured_star_systems(state.get("starSystems", []), options, catalog)
+	state["hyperlanes"] = _build_configured_hyperlanes(state.get("hyperlanes", []), options, state.get("starSystems", []))
+	var configured: Dictionary = _build_configured_ai_factions(state, options, ai_templates)
+	state["factions"] = configured.get("factions", state.get("factions", []))
+	state["fleets"] = configured.get("fleets", state.get("fleets", []))
+	state["relationships"] = _build_configured_relationships(state.get("factions", []))
+	state["relationshipHistory"] = _initial_relationship_history(state.get("relationships", []))
+	state["aiActionLog"] = []
+	return state
+
+static func _base_system(system_id: String, name: String, system_type: String, position: Vector3, resources: Dictionary, slots: int, visibility: String, event_type: String, note: String, habitability: int) -> Dictionary:
+	return {
+		"id": system_id,
+		"name": name,
+		"type": system_type,
+		"position": position,
+		"resources": resources,
+		"buildingSlots": slots,
+		"baseBuildingSlots": slots,
+		"buildings": [],
+		"ownerId": null,
+		"population": 0,
+		"visibilityLevel": visibility,
+		"eventType": event_type,
+		"eventResolved": false,
+		"note": note,
+		"habitability": habitability,
+		"colonyStage": "NONE",
+		"colonizationProgress": 0.0,
+		"colonizationTurnsRemaining": 0,
+		"colonizationMode": "",
+		"colonizationRisk": "中",
+		"stability": 0,
+		"supplyLevel": 0,
+		"migrationPull": clampi(habitability - 28, 22, 76)
+	}
+
+static func _configured_system_id_order(target_count: int) -> Array[String]:
+	var ordered_ids: Array[String] = [
+		"sys_cat_home",
+		"sys_sirius",
+		"sys_vega",
+		"sys_polaris",
+		"sys_orion",
+		"sys_lyra",
+		"sys_cygnus",
+		"sys_draco",
+		"sys_mira",
+		"sys_antares",
+		"sys_hydra",
+		"sys_pegasus",
+		"sys_cassiopeia"
+	]
+	while ordered_ids.size() < target_count:
+		ordered_ids.append("sys_outer_%02d" % (ordered_ids.size() - 12))
+	return ordered_ids.slice(0, target_count)
+
+static func _procedural_outer_system(index: int) -> Dictionary:
+	var names: Array[String] = [
+		"鲸背静湾", "灰烬窗", "折跃盐桥", "晨星栈道", "银梭暗井", "远炬环",
+		"鸢尾岔口", "雾冠门", "碎晶台", "北冕堤", "蓝砂港", "白昼沟",
+		"赤纬站", "幽弦井", "暮潮环", "镜湖尖", "铁雨港", "星穗坞"
+	]
+	var types: Array[String] = ["SOLAR", "NEBULA", "BINARY", "STORM"]
+	var events: Array[String] = ["DERELICT_STATION", "RICH_ASTEROIDS", "ANCIENT_RUINS", "ENERGY_ANOMALY"]
+	var angle: float = (float(index) * 137.5 + 18.0) * PI / 180.0
+	var radius: float = 20.0 + float(index % 4) * 2.6
+	var resources: Dictionary = {
+		"food": 2 + ((index * 3) % 5),
+		"minerals": 2 + ((index * 5 + 1) % 8),
+		"industry": 2 + ((index * 7 + 2) % 5),
+		"energy": 2 + ((index * 11 + 3) % 7)
+	}
+	return _base_system(
+		"sys_outer_%02d" % (index + 1),
+		str(names[index % names.size()]),
+		str(types[index % types.size()]),
+		Vector3(cos(angle) * radius, 0.0, sin(angle) * radius),
+		resources,
+		3 + (index % 3),
+		"HIDDEN",
+		str(events[index % events.size()]),
+		"远环自动星图补全节点，适合在中后期扩张中形成新的侧翼战线。",
+		54 + ((index * 7) % 27)
+	)
+
+static func _build_configured_star_systems(base_systems: Array, options: Dictionary, catalog: Array) -> Array:
+	var systems: Array = base_systems.duplicate(true)
+	var scale: String = str(options.get("map_scale", "STANDARD"))
+	var extra_systems: Array = [
+		_base_system("sys_lyra", "天琴门", "SOLAR", Vector3(-13.0, 0.0, 9.0), {"food": 4, "minerals": 5, "industry": 3, "energy": 4}, 4, "PARTIAL", "DERELICT_STATION", "外缘信标仍在低功率广播，适合建立补给链。", 68),
+		_base_system("sys_cygnus", "天鹅湾", "BINARY", Vector3(-3.5, 0.0, 15.0), {"food": 6, "minerals": 2, "industry": 3, "energy": 5}, 4, "HIDDEN", "RICH_ASTEROIDS", "航道尽头的富集尘带包围着宜居卫星。", 74),
+		_base_system("sys_draco", "龙脊", "STORM", Vector3(7.0, 0.0, 13.0), {"food": 2, "minerals": 8, "industry": 5, "energy": 3}, 5, "HIDDEN", "ANCIENT_RUINS", "风暴间隙中可见古代船坞轮廓。", 58),
+		_base_system("sys_mira", "米拉潮汐", "NEBULA", Vector3(14.0, 0.0, 1.5), {"food": 3, "minerals": 3, "industry": 4, "energy": 8}, 4, "HIDDEN", "ENERGY_ANOMALY", "周期性脉冲让这里成为危险但丰厚的能源节点。", 61),
+		_base_system("sys_antares", "心宿熔炉", "BINARY", Vector3(13.0, 0.0, -11.0), {"food": 1, "minerals": 9, "industry": 6, "energy": 2}, 5, "HIDDEN", "RICH_ASTEROIDS", "高温矿脉适合重工业文明长期经营。", 52),
+		_base_system("sys_hydra", "长蛇暗湾", "NEBULA", Vector3(-12.5, 0.0, -9.0), {"food": 5, "minerals": 3, "industry": 2, "energy": 6}, 4, "HIDDEN", "ANCIENT_RUINS", "星云遮蔽了多条隐秘支线，是潜航者的理想跳板。", 64),
+		_base_system("sys_pegasus", "飞马桥", "SOLAR", Vector3(1.0, 0.0, -14.0), {"food": 4, "minerals": 4, "industry": 5, "energy": 4}, 5, "HIDDEN", "DERELICT_STATION", "旧时代桥头堡仍保留大型居住结构。", 77),
+		_base_system("sys_cassiopeia", "仙后冠", "SOLAR", Vector3(-18.0, 0.0, -1.5), {"food": 6, "minerals": 5, "industry": 4, "energy": 3}, 5, "HIDDEN", "RICH_ASTEROIDS", "外环带资源丰厚，但距离主航线较远。", 72)
+	]
+	var target_count: int = int(map_scale_presets().get(scale, map_scale_presets()["STANDARD"]).get("system_count", 9))
+	for system: Dictionary in extra_systems:
+		if systems.size() >= target_count:
+			break
+		systems.append(system)
+	var procedural_index: int = 0
+	while systems.size() < target_count:
+		systems.append(_procedural_outer_system(procedural_index))
+		procedural_index += 1
+	for index: int in range(systems.size()):
+		var system: Dictionary = systems[index]
+		if _is_ai_runtime_id(str(system.get("ownerId", ""))):
+			system["ownerId"] = null
+			system["population"] = 0
+			system["visibilityLevel"] = "HIDDEN"
+			system["colonyStage"] = "NONE"
+			system["colonizationProgress"] = 0.0
+			system["colonizationTurnsRemaining"] = 0
+			system["colonizationMode"] = ""
+			system["stability"] = 0
+			system["supplyLevel"] = 0
+			system["buildings"] = []
+			systems[index] = system
+	var runtime_ids: Array[String] = _ai_runtime_ids()
+	var capital_ids: Array[String] = _spaced_ai_capital_ids(systems, int(options.get("opponent_count", 2)))
+	for capital_index: int in range(min(runtime_ids.size(), capital_ids.size())):
+		var faction_id: String = str(runtime_ids[capital_index])
+		var capital_id: String = str(capital_ids[capital_index])
+		for system_index: int in range(systems.size()):
+			var system: Dictionary = systems[system_index]
+			if str(system.get("id", "")) != capital_id:
+				continue
+			system["ownerId"] = faction_id
+			system["population"] = 190
+			system["visibilityLevel"] = "PARTIAL"
+			system["colonyStage"] = "COLONY"
+			system["colonizationProgress"] = 100.0
+			system["colonizationTurnsRemaining"] = 0
+			system["colonizationMode"] = "STANDARD"
+			system["stability"] = 70
+			system["supplyLevel"] = 84
+			system["buildings"] = [_make_building("b_%s_habitat" % capital_id, catalog[0])]
+			systems[system_index] = system
+	return systems
+
+static func _build_configured_hyperlanes(base_hyperlanes: Array, options: Dictionary, systems: Array = []) -> Array:
+	var lanes: Array = base_hyperlanes.duplicate(true)
+	var scale: String = str(options.get("map_scale", "STANDARD"))
+	var target_system_count: int = int(map_scale_presets().get(scale, map_scale_presets()["STANDARD"]).get("system_count", 18))
+	var extra_lanes: Array = [
+		{"id": "lane_6", "startSystemId": "sys_cat_home", "endSystemId": "sys_lyra", "type": "LANE", "traversalCost": 1, "bandwidth": 8},
+		{"id": "lane_7", "startSystemId": "sys_lyra", "endSystemId": "sys_cygnus", "type": "LANE", "traversalCost": 1, "bandwidth": 7},
+		{"id": "lane_8", "startSystemId": "sys_cygnus", "endSystemId": "sys_polaris", "type": "LANE", "traversalCost": 1, "bandwidth": 7},
+		{"id": "lane_9", "startSystemId": "sys_polaris", "endSystemId": "sys_draco", "type": "LANE", "traversalCost": 1, "bandwidth": 7},
+		{"id": "lane_10", "startSystemId": "sys_draco", "endSystemId": "sys_mira", "type": "WORMHOLE", "traversalCost": 1, "bandwidth": 5},
+		{"id": "lane_11", "startSystemId": "sys_mira", "endSystemId": "sys_orion", "type": "LANE", "traversalCost": 1, "bandwidth": 8},
+		{"id": "lane_12", "startSystemId": "sys_orion", "endSystemId": "sys_antares", "type": "LANE", "traversalCost": 1, "bandwidth": 8},
+		{"id": "lane_13", "startSystemId": "sys_antares", "endSystemId": "sys_pegasus", "type": "LANE", "traversalCost": 1, "bandwidth": 7},
+		{"id": "lane_14", "startSystemId": "sys_pegasus", "endSystemId": "sys_sirius", "type": "LANE", "traversalCost": 1, "bandwidth": 7},
+		{"id": "lane_15", "startSystemId": "sys_sirius", "endSystemId": "sys_hydra", "type": "WORMHOLE", "traversalCost": 1, "bandwidth": 5},
+		{"id": "lane_16", "startSystemId": "sys_hydra", "endSystemId": "sys_cassiopeia", "type": "LANE", "traversalCost": 1, "bandwidth": 7}
+	]
+	var target_count: int = int(map_scale_presets().get(scale, map_scale_presets()["STANDARD"]).get("hyperlane_count", 11))
+	for lane: Dictionary in extra_lanes:
+		if lanes.size() >= target_count:
+			break
+		lanes.append(lane)
+	var system_ids: Array[String] = _configured_system_id_order(target_system_count)
+	var lane_index: int = 17
+	var candidates: Array = _sorted_nearby_lane_candidates(system_ids, systems, lanes)
+	var cursor: int = 0
+	while lanes.size() < target_count and cursor < candidates.size():
+		var candidate: Dictionary = candidates[cursor]
+		var start_id: String = str(candidate.get("start_id", ""))
+		var end_id: String = str(candidate.get("end_id", ""))
+		if start_id != end_id and not _lane_exists(lanes, start_id, end_id):
+			lanes.append(_build_procedural_hyperlane(lane_index, start_id, end_id, cursor, float(candidate.get("distance_score", 0.0))))
+			lane_index += 1
+		cursor += 1
+	return lanes
+
+static func _sorted_nearby_lane_candidates(system_ids: Array[String], systems: Array, existing_lanes: Array) -> Array:
+	var positions: Dictionary = _system_position_lookup(systems)
+	var candidates: Array = []
+	for start_index: int in range(system_ids.size()):
+		var start_id: String = str(system_ids[start_index])
+		for end_index: int in range(start_index + 1, system_ids.size()):
+			var end_id: String = str(system_ids[end_index])
+			if _lane_exists(existing_lanes, start_id, end_id):
+				continue
+			candidates.append({
+				"start_id": start_id,
+				"end_id": end_id,
+				"distance_score": _lane_distance_score(positions, start_id, end_id),
+				"ring_gap": abs(start_index - end_index)
+			})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var distance_a: float = float(a.get("distance_score", 0.0))
+		var distance_b: float = float(b.get("distance_score", 0.0))
+		if not is_equal_approx(distance_a, distance_b):
+			return distance_a < distance_b
+		return int(a.get("ring_gap", 0)) < int(b.get("ring_gap", 0))
+	)
+	return candidates
+
+static func _system_position_lookup(systems: Array) -> Dictionary:
+	var positions: Dictionary = {}
+	for system: Dictionary in systems:
+		positions[str(system.get("id", ""))] = system.get("position", Vector3.ZERO)
+	return positions
+
+static func _ai_runtime_ids() -> Array[String]:
+	return ["f_merchant", "f_orchid", "f_ai_3", "f_ai_4", "f_ai_5"]
+
+static func _preferred_ai_capital_ids() -> Array[String]:
+	return ["sys_draco", "sys_orion", "sys_pegasus", "sys_mira", "sys_antares"]
+
+static func _is_ai_runtime_id(faction_id: String) -> bool:
+	return _ai_runtime_ids().has(faction_id)
+
+static func _spaced_ai_capital_ids(systems: Array, opponent_count: int) -> Array[String]:
+	var positions: Dictionary = _system_position_lookup(systems)
+	var player_position: Vector3 = positions.get("sys_cat_home", Vector3.ZERO)
+	var selected: Array[String] = []
+	for candidate_id: String in _preferred_ai_capital_ids():
+		if selected.size() >= opponent_count:
+			break
+		if not positions.has(candidate_id):
+			continue
+		var candidate_position: Vector3 = positions.get(candidate_id, Vector3.ZERO)
+		if player_position.distance_to(candidate_position) >= MIN_PLAYER_STARTING_CAPITAL_DISTANCE:
+			selected.append(candidate_id)
+	for candidate_id: String in _preferred_ai_capital_ids():
+		if selected.size() >= opponent_count:
+			break
+		if positions.has(candidate_id) and not selected.has(candidate_id):
+			selected.append(candidate_id)
+	return selected
+
+static func _lane_distance_score(positions: Dictionary, start_id: String, end_id: String) -> float:
+	var start_position: Vector3 = positions.get(start_id, Vector3.ZERO)
+	var end_position: Vector3 = positions.get(end_id, Vector3.ZERO)
+	var distance_squared: float = start_position.distance_squared_to(end_position)
+	if distance_squared > 360.0:
+		distance_squared *= 2.4
+	return distance_squared
+
+static func _lane_exists(lanes: Array, start_id: String, end_id: String) -> bool:
+	for lane: Dictionary in lanes:
+		var lane_start: String = str(lane.get("startSystemId", ""))
+		var lane_end: String = str(lane.get("endSystemId", ""))
+		if (lane_start == start_id and lane_end == end_id) or (lane_start == end_id and lane_end == start_id):
+			return true
+	return false
+
+static func _build_procedural_hyperlane(lane_index: int, start_id: String, end_id: String, cursor: int, distance_score: float = 0.0) -> Dictionary:
+	return {
+		"id": "lane_%s" % str(lane_index),
+		"startSystemId": start_id,
+		"endSystemId": end_id,
+		"type": "LANE",
+		"traversalCost": 2 if distance_score > 520.0 else 1,
+		"bandwidth": 5 + (cursor % 5)
+	}
+
+static func _build_configured_ai_factions(state: Dictionary, options: Dictionary, ai_templates: Array) -> Dictionary:
+	var factions: Array = [state.get("factions", [])[0]]
+	var fleets: Array = [state.get("fleets", [])[0]]
+	var runtime_ids: Array[String] = _ai_runtime_ids()
+	var capital_ids: Array[String] = _spaced_ai_capital_ids(state.get("starSystems", []), int(options.get("opponent_count", 2)))
+	for index: int in range(min(ai_templates.size(), int(options.get("opponent_count", 2)))):
+		var faction: Dictionary = _apply_difficulty_to_faction(build_ai_faction_from_template(str(runtime_ids[index]), str(capital_ids[index]), ai_templates[index]), options)
+		factions.append(faction)
+		fleets.append(_make_ai_fleet(index, str(runtime_ids[index]), str(capital_ids[index]), str(faction.get("leaderName", ""))))
+	return {"factions": factions, "fleets": fleets}
+
+static func _make_ai_fleet(index: int, faction_id: String, system_id: String, leader_name: String) -> Dictionary:
+	var ship_number: int = 10 + index * 2
+	return {
+		"id": "fleet_ai_%s" % str(index + 1),
+		"ownerId": faction_id,
+		"systemId": system_id,
+		"mission": "GUARD",
+		"name": "%s 星防队" % leader_name,
+		"ships": [
+			{"id": "ship_ai_%s_a" % ship_number, "type": "CORVETTE", "name": "前锋%s" % ship_number, "hp": 100, "maxHp": 100, "damage": 18 + index, "evasion": 28, "tracking": 48, "speed": 10},
+			{"id": "ship_ai_%s_b" % ship_number, "type": "CORVETTE", "name": "护航%s" % ship_number, "hp": 100, "maxHp": 100, "damage": 18 + index, "evasion": 28, "tracking": 48, "speed": 10}
+		]
+	}
+
+static func _build_configured_relationships(factions: Array) -> Array:
+	var relationships: Array = []
+	for i: int in range(factions.size()):
+		for j: int in range(i + 1, factions.size()):
+			var a: Dictionary = factions[i]
+			var b: Dictionary = factions[j]
+			relationships.append({
+				"factionAId": a.get("id", ""),
+				"factionBId": b.get("id", ""),
+				"trust": 30 if bool(a.get("isPlayer", false)) else 20,
+				"utility": 30,
+				"fear": 10,
+				"affinity": 12,
+				"memoryImpact": 0,
+				"level": "NEUTRAL"
+			})
+	return relationships
+
+static func _initial_relationship_history(relationships: Array) -> Array:
+	var history: Array = []
+	for relation: Dictionary in relationships:
+		var entry: Dictionary = relation.duplicate(true)
+		entry["turn"] = 1
+		history.append(entry)
+	return history
 
 static func _technology_nodes() -> Array:
 	return [
