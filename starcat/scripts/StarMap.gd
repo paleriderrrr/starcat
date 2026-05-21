@@ -70,6 +70,8 @@ const SYSTEM_TACTICAL_RADIUS: float = 1.08
 const SYSTEM_SELECTED_TACTICAL_RADIUS: float = 1.28
 const SYSTEM_TACTICAL_SEGMENTS: int = 48
 const SYSTEM_TACTICAL_GAP_SEGMENTS: int = 5
+const REACHABLE_ROUTE_BEACON_RADIUS: float = 1.46
+const FOG_OF_WAR_VEIL_RADIUS: float = 1.18
 const FLEET_MARKER_PIXEL_SIZE: float = 0.0046
 const LANE_STRIP_WIDTH: float = 0.032
 const HIGHLIGHTED_LANE_STRIP_WIDTH: float = 0.044
@@ -81,6 +83,8 @@ const VFX_LANE_ALPHA_PULSE: float = 0.035
 const VFX_SYSTEM_PULSE_AMOUNT: float = 0.045
 const VFX_FLEET_PULSE_AMOUNT: float = 0.07
 const VFX_RETICLE_ALPHA_PULSE: float = 0.16
+const VFX_ROUTE_BEACON_ALPHA_PULSE: float = 0.10
+const VFX_FOG_VEIL_ALPHA_PULSE: float = 0.035
 const VFX_NEBULA_DRIFT_SPEED: float = 0.006
 const VFX_NEBULA_ALPHA_PULSE: float = 0.018
 const RESOURCE_BADGE_LABELS: Dictionary = {"food": "食", "minerals": "矿", "industry": "工", "energy": "能"}
@@ -198,6 +202,10 @@ func _build_systems() -> void:
 		body.add_child(collision)
 		if system.get("visibilityLevel", "HIDDEN") != "HIDDEN":
 			body.add_child(_make_system_tactical_overlay(system, reachable.has(system.get("id", ""))))
+			if reachable.has(system.get("id", "")) and GameState.selected_fleet_id != "":
+				body.add_child(_make_reachable_route_beacon(system))
+		else:
+			body.add_child(_make_fog_of_war_veil(system))
 		body.add_child(_make_system_texture_sprite(system, reachable.has(system.get("id", ""))))
 		if system.get("ownerId", null) != null and system.get("visibilityLevel", "HIDDEN") != "HIDDEN":
 			body.add_child(_make_system_owner_plate(system))
@@ -580,6 +588,79 @@ func _make_system_reticle(system: Dictionary) -> MeshInstance3D:
 	reticle.set_meta("phase", float(abs(str(system.get("id", "")).hash()) % 1000) / 100.0)
 	return reticle
 
+func _make_reachable_route_beacon(system: Dictionary) -> MeshInstance3D:
+	var beacon := MeshInstance3D.new()
+	beacon.name = "ReachableRouteBeacon"
+	var mesh := ImmediateMesh.new()
+	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for index: int in range(64):
+		if index % 8 in [3, 4]:
+			continue
+		var start_angle: float = TAU * float(index) / 64.0
+		var end_angle: float = TAU * float(index + 1) / 64.0
+		mesh.surface_add_vertex(Vector3(cos(start_angle) * REACHABLE_ROUTE_BEACON_RADIUS, 0.046, sin(start_angle) * REACHABLE_ROUTE_BEACON_RADIUS))
+		mesh.surface_add_vertex(Vector3(cos(end_angle) * REACHABLE_ROUTE_BEACON_RADIUS, 0.046, sin(end_angle) * REACHABLE_ROUTE_BEACON_RADIUS))
+	for index: int in range(6):
+		var angle: float = TAU * float(index) / 6.0
+		var direction := Vector3(cos(angle), 0.0, sin(angle))
+		mesh.surface_add_vertex(direction * (REACHABLE_ROUTE_BEACON_RADIUS - 0.18) + Vector3(0.0, 0.046, 0.0))
+		mesh.surface_add_vertex(direction * (REACHABLE_ROUTE_BEACON_RADIUS + 0.22) + Vector3(0.0, 0.046, 0.0))
+	mesh.surface_end()
+	var color := Color("BFA5FF", 0.42)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = 0.84
+	material.no_depth_test = true
+	beacon.mesh = mesh
+	beacon.material_override = material
+	beacon.add_to_group("starmap_vfx_animated")
+	beacon.set_meta("vfx_kind", "route_beacon")
+	beacon.set_meta("base_alpha", color.a)
+	beacon.set_meta("base_scale", beacon.scale)
+	beacon.set_meta("rotation_speed", 0.24)
+	beacon.set_meta("phase", float(abs(str(system.get("id", "")).hash()) % 1000) / 70.0)
+	return beacon
+
+func _make_fog_of_war_veil(system: Dictionary) -> MeshInstance3D:
+	var veil := MeshInstance3D.new()
+	veil.name = "FogOfWarVeil"
+	var mesh := ImmediateMesh.new()
+	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for index: int in range(40):
+		if index % 5 == 2:
+			continue
+		var start_angle: float = TAU * float(index) / 40.0
+		var end_angle: float = TAU * float(index + 1) / 40.0
+		mesh.surface_add_vertex(Vector3(cos(start_angle) * FOG_OF_WAR_VEIL_RADIUS, 0.032, sin(start_angle) * FOG_OF_WAR_VEIL_RADIUS))
+		mesh.surface_add_vertex(Vector3(cos(end_angle) * FOG_OF_WAR_VEIL_RADIUS, 0.032, sin(end_angle) * FOG_OF_WAR_VEIL_RADIUS))
+	for index: int in range(4):
+		var angle: float = TAU * float(index) / 4.0 + PI * 0.25
+		var direction := Vector3(cos(angle), 0.0, sin(angle))
+		mesh.surface_add_vertex(direction * (FOG_OF_WAR_VEIL_RADIUS * 0.36) + Vector3(0.0, 0.032, 0.0))
+		mesh.surface_add_vertex(direction * (FOG_OF_WAR_VEIL_RADIUS * 0.62) + Vector3(0.0, 0.032, 0.0))
+	mesh.surface_end()
+	var color := Color("6F8FA8", 0.20)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = 0.28
+	material.no_depth_test = true
+	veil.mesh = mesh
+	veil.material_override = material
+	veil.add_to_group("starmap_vfx_animated")
+	veil.set_meta("vfx_kind", "fog_veil")
+	veil.set_meta("base_alpha", color.a)
+	veil.set_meta("rotation_speed", -0.035)
+	veil.set_meta("phase", float(abs(str(system.get("id", "")).hash()) % 1000) / 95.0)
+	return veil
+
 func _make_system_tactical_overlay(system: Dictionary, reachable: bool) -> MeshInstance3D:
 	var overlay := MeshInstance3D.new()
 	overlay.name = "SystemTacticalOverlay"
@@ -898,6 +979,10 @@ func _animate_star_map_vfx() -> void:
 				_animate_fleet_marker(node, wave)
 			"selection_reticle":
 				_animate_selection_reticle(node, wave)
+			"route_beacon":
+				_animate_route_beacon(node, wave)
+			"fog_veil":
+				_animate_fog_veil(node, wave)
 
 func _animate_nebula_backdrop(node: Node, wave: float) -> void:
 	if not node is MeshInstance3D:
@@ -991,6 +1076,37 @@ func _animate_selection_reticle(node: Node, wave: float) -> void:
 	color.a = clamp(base_alpha + wave * VFX_RETICLE_ALPHA_PULSE, 0.28, 1.0)
 	material.albedo_color = color
 	material.emission = color
+
+func _animate_route_beacon(node: Node, wave: float) -> void:
+	var mesh_instance := node as MeshInstance3D
+	if mesh_instance == null:
+		return
+	var material := mesh_instance.material_override as StandardMaterial3D
+	if material == null:
+		return
+	var base_alpha: float = float(mesh_instance.get_meta("base_alpha", material.albedo_color.a))
+	var base_scale: Vector3 = mesh_instance.get_meta("base_scale", Vector3.ONE)
+	var color: Color = material.albedo_color
+	color.a = clamp(base_alpha + wave * VFX_ROUTE_BEACON_ALPHA_PULSE, 0.18, 0.72)
+	material.albedo_color = color
+	material.emission = color
+	material.emission_energy_multiplier = 0.72 + wave * 0.10
+	mesh_instance.scale = base_scale * (1.0 + wave * 0.018)
+	mesh_instance.rotation.y = fmod(_vfx_time * float(mesh_instance.get_meta("rotation_speed", 0.24)), TAU)
+
+func _animate_fog_veil(node: Node, wave: float) -> void:
+	var mesh_instance := node as MeshInstance3D
+	if mesh_instance == null:
+		return
+	var material := mesh_instance.material_override as StandardMaterial3D
+	if material == null:
+		return
+	var base_alpha: float = float(mesh_instance.get_meta("base_alpha", material.albedo_color.a))
+	var color: Color = material.albedo_color
+	color.a = clamp(base_alpha + wave * VFX_FOG_VEIL_ALPHA_PULSE, 0.10, 0.28)
+	material.albedo_color = color
+	material.emission = color
+	mesh_instance.rotation.y = fmod(_vfx_time * float(mesh_instance.get_meta("rotation_speed", -0.035)), TAU)
 
 func _clear_children(root: Node) -> void:
 	for child: Node in root.get_children():

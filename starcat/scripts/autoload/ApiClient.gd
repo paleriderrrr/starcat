@@ -7,6 +7,7 @@ const LocalAIServiceScript = preload("res://scripts/services/LocalAIService.gd")
 const NarrativeServiceScript = preload("res://scripts/services/NarrativeService.gd")
 const DecisionIterationServiceScript = preload("res://scripts/services/DecisionIterationService.gd")
 const BailianProviderScript = preload("res://scripts/llm/BailianProvider.gd")
+const OpenAIChatProviderScript = preload("res://scripts/llm/OpenAIChatProvider.gd")
 
 signal service_health_checked(ok: bool)
 signal world_query_received(payload: Dictionary)
@@ -34,7 +35,10 @@ func _ensure_services() -> void:
 	_ai_service = LocalAIServiceScript.new()
 	_narrative_service = NarrativeServiceScript.new()
 	_iteration_service = DecisionIterationServiceScript.new()
-	_provider = BailianProviderScript.new()
+	if str(_settings.get("provider", "bailian")).to_lower() == "mimo":
+		_provider = OpenAIChatProviderScript.new()
+	else:
+		_provider = BailianProviderScript.new()
 	_provider.configure(_settings)
 	add_child(_provider)
 
