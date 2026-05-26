@@ -1,5 +1,11 @@
 [llm]
 remote_enabled=false
+provider=bailian
 api_key=
 model=qwen3.5-flash
 base_url=https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1
+
+; For Mimo/OpenAI-compatible mode, use provider=mimo and prefer the provider-specific keys below.
+; mimo_api_key=
+; mimo_model=mimo-v2.5-pro
+; mimo_base_url=https://api.xiaomimimo.com/v1
