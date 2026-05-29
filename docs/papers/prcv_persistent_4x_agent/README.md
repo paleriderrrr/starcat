@@ -7,6 +7,8 @@ This folder contains a research-oriented paper draft for Starcat's persistent AI
 - `main.tex` - PRCV-style manuscript draft.
 - `references.bib` - bibliography.
 - `literature_bank.md` - research survey notes and claim mapping.
+- `model_construction.md` - detailed persistent persona agent state, storage, primitive, validation, and update design.
+- `experiment_plan.md` - research questions, baselines, ablations, scenario suite, metrics, and execution milestones.
 - `research_harness_log.md` - record of Research Harness and Oh My Paper usage.
 
 ## Core Thesis
