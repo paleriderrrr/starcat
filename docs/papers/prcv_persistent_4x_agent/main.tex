@@ -1,0 +1,169 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+
+\title{Persistent Persona Agents for Long-Horizon Strategy in 4X Games}
+\author{Starcat Research Group}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+4X strategy games expose a persistent weakness of contemporary game AI: agents can execute local tactics, but often fail to maintain coherent global strategy, diplomatic identity, and cross-turn commitments over hundreds of turns. Recent large language model (LLM) agents demonstrate useful planning, memory, reflection, and tool-use behavior, while Civilization-style benchmarks show that long-horizon strategic evaluation requires dense progress signals rather than terminal win/loss alone. We propose Persistent Persona Agent (PPA), a research architecture for 4X game AI in which each civilization maintains a durable, inspectable persona state. The persona stores stable traits, mutable strategic commitments, diplomatic memories, risk posture, and playbook preferences. At each decision point, the game sends the persona state, current game state, and global summary to an LLM strategist. The strategist returns a small set of typed primitives rather than direct game commands. A deterministic rule layer validates legality, resolves primitives into executable actions, and records the result. An offline iteration layer converts outcomes into reflection records, regression cases, and playbook updates without allowing runtime source-code mutation. PPA is intended to make AI opponents strategically consistent, adaptable, and auditable in commercial-scale 4X games.
+\end{abstract}
+
+\section{Introduction}
+4X games such as Civilization-like and space grand-strategy titles are difficult environments for artificial agents. They combine long horizons, partial observability, asymmetric development paths, multi-agent diplomacy, sparse terminal rewards, and interleaved tactical and strategic decisions. Classical game AI is often competent at local heuristics: building a unit, moving a fleet, or evaluating a combat exchange. The weakness becomes visible at the global layer. Opponents may expand without a coherent doctrine, declare wars that do not support a victory plan, forget past diplomatic commitments, or oscillate between economic, military, and scientific goals without a stable identity.
+
+This paper argues that the core missing object is not only a stronger policy, but a persistent strategic self. Human players do not merely choose actions from the current board. They carry preferences, grudges, fears, promises, long-term goals, and a model of what kind of civilization they are playing. A 4X AI that lacks this durable personality can appear brittle even when individual actions are legal.
+
+Recent LLM-agent research gives useful ingredients. Generative Agents store observations, retrieve memories, and synthesize reflections for believable behavior \cite{park2023generative}. ReAct interleaves reasoning and acting \cite{yao2023react}. Reflexion improves agents through verbal feedback stored in memory \cite{shinn2023reflexion}. Voyager shows that lifelong agent improvement can use a growing skill library and iterative feedback without model fine-tuning \cite{wang2023voyager}. Meanwhile, Civilization-oriented work such as CivRealm, Vox Deorum, and CivBench shows that strategic games are now plausible testbeds for language-based decision agents \cite{qi2024civrealm,chen2025vox,chen2026civbench}.
+
+We propose Persistent Persona Agent (PPA), an architecture for 4X AI opponents whose decisions depend on three inputs: a durable persona state, the current game state, and a global strategic summary. The LLM is not trusted to directly mutate game state. Instead, it emits typed decision primitives, such as \texttt{PURSUE\_VICTORY}, \texttt{SHIFT\_POSTURE}, \texttt{PROPOSE\_TREATY}, \texttt{MOBILIZE\_FLEET}, or \texttt{INVEST\_ECONOMY}. The game engine validates these primitives, checks legality and resource constraints, resolves them into concrete actions, and records the outcome. A separate offline loop analyzes trajectories and updates playbooks, persona priors, and regression tests.
+
+Our contribution is a systems design for persistent, personality-driven LLM agents in 4X games, together with a research protocol for evaluating coherence, strategic progress, and adaptation.
+
+\section{Problem: Local Competence Without Global Strategy}
+The common failure mode in 4X AI is not a single missing tactic. It is long-range incoherence. We identify five recurring symptoms:
+
+\textbf{Strategic drift.} The agent changes victory path or military posture without sufficient evidence, wasting earlier investments.
+
+\textbf{Memory discontinuity.} Treaties, betrayals, threats, favors, and border incidents do not persist as durable diplomatic facts.
+
+\textbf{Personality collapse.} Civilizations with different fictional identities converge toward similar utility heuristics.
+
+\textbf{Primitive overreach.} A model may describe an attractive strategy that the rules cannot execute in the current state.
+
+\textbf{Sparse evaluation.} Win/loss feedback after hundreds of turns is too delayed to improve decision policy or diagnose failures.
+
+The PPA architecture addresses these by separating strategic authorship from rule execution. The LLM proposes intent; the engine enforces legality; the memory layer preserves identity and experience; the offline evaluator performs improvement.
+
+\section{Related Work}
+\subsection{LLM Agents with Memory and Reflection}
+Generative Agents introduced an architecture that records experiences, retrieves relevant memories, and creates higher-level reflections for believable simulated behavior \cite{park2023generative}. This is directly relevant to persistent game personas: a civilization should remember not only isolated facts, but also synthesized beliefs such as ``the Orion faction breaks treaties when militarily weak.''
+
+Reflexion converts feedback into verbal self-reflection stored in episodic memory \cite{shinn2023reflexion}. PPA adapts this idea to strategic episodes: after a failed war, the agent stores a reflection about overextension, logistics, and diplomatic risk.
+
+Voyager demonstrates skill accumulation through an expanding, executable skill library in Minecraft \cite{wang2023voyager}. PPA uses a safer analogue: a playbook library of strategic routines. Unlike Voyager, these routines do not become arbitrary executable game code during runtime; they remain declarative and are validated by the game rules.
+
+ReAct shows the value of coupling reasoning traces and environment actions \cite{yao2023react}. PPA preserves this coupling but constrains the action channel to typed primitives.
+
+\subsection{Strategic Game Environments and 4X Benchmarks}
+CivRealm provides a Civilization-inspired environment with tensor-based and language-based agent interfaces \cite{qi2024civrealm}. It shows that Civilization-like domains are useful for both learning and reasoning agents.
+
+Vox Deorum proposes a hybrid LLM+X architecture for Civilization V, where LLMs perform macro-strategic reasoning and tactical subsystems handle execution \cite{chen2025vox}. PPA follows the same spirit but focuses on persistent personality, memory, and cross-turn identity as first-class state.
+
+CivBench argues that terminal win/loss is too sparse for long Civilization games and introduces turn-level victory probability as a progress signal \cite{chen2026civbench}. PPA uses the same insight: persona and playbook updates should be driven by dense trajectory evaluation, not only final outcomes.
+
+CivAgent emphasizes human-like digital players in a Civilization-like game, noting the importance of flexible diplomacy and natural-language negotiation \cite{fuxi2025civagent}. PPA integrates this perspective by making diplomatic stance and trust memory part of the persona state.
+
+\section{Persistent Persona Agent}
+\subsection{State Objects}
+PPA maintains four state objects:
+
+\textbf{GameState} is the authoritative world state: map, resources, units, diplomacy, technology, visibility, and victory progress.
+
+\textbf{GlobalSummary} is a compressed state abstraction: current balance of power, contested regions, known victory races, diplomatic blocs, economic bottlenecks, and major risks.
+
+\textbf{PersonaState} is the durable identity of a civilization. It contains stable traits and mutable strategic memory:
+\begin{itemize}
+  \item stable traits: aggression, risk tolerance, honor, expansionism, opportunism, scientific ambition, trade preference;
+  \item strategic commitments: current victory path, military posture, expansion frontier, preferred allies, declared rivals;
+  \item episodic memories: treaty history, betrayals, border incidents, successful campaigns, failed investments;
+  \item reflections: natural-language summaries derived from previous outcomes;
+  \item playbook preferences: weighted tendencies toward known strategic routines.
+\end{itemize}
+
+\textbf{DecisionLedger} records every decision prompt, primitive output, validation result, executed action, and evaluation.
+
+\subsection{Decision Cycle}
+Each turn follows a fixed cycle:
+
+\begin{enumerate}
+  \item Summarize the current world state from the civilization's perspective.
+  \item Retrieve relevant persona memories and active commitments.
+  \item Package PersonaState, GlobalSummary, and local GameState slice for the LLM strategist.
+  \item Ask the strategist to emit typed primitives with rationales and confidence.
+  \item Validate primitives with deterministic rules.
+  \item Resolve valid primitives into concrete game actions.
+  \item Execute actions and record state transition.
+  \item Evaluate outcome and append reflection candidates.
+\end{enumerate}
+
+\subsection{Decision Primitives}
+The LLM output space is intentionally small. Example primitive families include:
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lll}
+\toprule
+Primitive & Intent & Rule Resolution \\
+\midrule
+\texttt{PURSUE\_VICTORY} & choose victory track & update commitment \\
+\texttt{SHIFT\_POSTURE} & change stance & alter weights \\
+\texttt{INVEST\_ECONOMY} & build economy & choose legal build \\
+\texttt{MOBILIZE\_FLEET} & prepare force & assign fleet plan \\
+\texttt{EXPAND\_FRONTIER} & colonize/scout & select target \\
+\texttt{PROPOSE\_TREATY} & diplomacy & validate treaty \\
+\texttt{DECLARE\_RIVAL} & memory/stance & update persona \\
+\bottomrule
+\end{tabular}
+\caption{Examples of LLM-authored primitives and deterministic rule resolution.}
+\end{table}
+
+This design prevents the model from inventing illegal actions. It also allows designers to inspect whether a failure came from high-level intent, primitive validation, or tactical resolution.
+
+\subsection{Persona Update}
+Persona is persistent but not static. We distinguish three update rates:
+
+\textbf{Slow traits} rarely change. A pacifist civilization should not become a reckless conqueror after one turn.
+
+\textbf{Medium commitments} change after evidence: a failed alliance, a border threat, or a rival approaching victory.
+
+\textbf{Fast memories} append every turn and are later compressed into reflections.
+
+Updates use bounded deltas. For example, repeated betrayal increases distrust and retaliation tendency, but cannot instantly override all other traits. This preserves character consistency while allowing adaptation.
+
+\section{Offline Improvement Layer}
+Runtime self-modification is unsafe for a commercial game. PPA therefore moves improvement offline.
+
+The offline loop consumes DecisionLedger trajectories and produces:
+\begin{itemize}
+  \item failure clusters, such as repeated overexpansion or late military response;
+  \item reflection templates, such as ``avoid two-front wars without fleet superiority'';
+  \item playbook revisions, such as stronger defense-first routines under invasion risk;
+  \item regression scenarios, such as savegame tests for war recovery;
+  \item persona calibration rules, such as keeping high-honor civilizations treaty-consistent.
+\end{itemize}
+
+Only validated artifacts enter the runtime build. This creates a feedback loop analogous to Reflexion and Voyager, but adapted for deterministic game deployment.
+
+\section{Evaluation Protocol}
+We propose evaluating PPA on three axes.
+
+\textbf{Strategic progress.} Use turn-level victory progress or victory probability rather than only final win/loss. Metrics include VP-AUC, military progress, science progress, diplomatic coalition strength, and economic growth.
+
+\textbf{Persona coherence.} Measure whether actions match declared traits and commitments. For example, an honorable trader should prefer treaties and retaliation only after violations; a militarist should convert border advantage into pressure.
+
+\textbf{Adaptation.} Measure whether the agent improves across repeated scenarios through offline updates. Metrics include regression pass rate, repeated-failure reduction, and recovery after adverse events.
+
+Baselines should include local heuristic AI, LLM without persistent persona, LLM with episodic memory only, and PPA with full persona plus offline reflection. Important ablations are removing GlobalSummary, removing persona memories, removing primitive validation, and removing offline iteration.
+
+\section{Discussion}
+PPA makes three design bets. First, personality should be state, not prompt flavor. Second, LLMs should author intent rather than execute rules. Third, improvement should be durable and testable rather than hidden inside a live model conversation.
+
+This architecture also creates new risks. Overly rigid persona constraints may make agents predictable. Excessive memory may produce stale grudges. Poor global summaries may bias the strategist. These risks are manageable if the system records decisions, validates primitives, and evaluates trajectories.
+
+\section{Conclusion}
+4X games need AI that can remember, commit, adapt, and remain narratively legible across long campaigns. Persistent Persona Agent offers a path toward that goal by combining durable AI personality, global strategic summaries, primitive-constrained LLM decisions, deterministic rule execution, and offline improvement. The result is not an unconstrained autonomous model, but a strategically expressive agent embedded inside a controllable game system.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

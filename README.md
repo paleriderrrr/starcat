@@ -6,6 +6,7 @@ Current structure:
 
 - `starcat`: Godot client and gameplay prototype
 - `docs/design`: converted and split design documents
+- `docs/papers`: academic paper drafts and publication-oriented research artifacts
 - `docs/research`: research notes that inform future AI and evaluation work
 - `docs/superpowers`: implementation specs and plans
 - `tests`: repository-level migration regression checks

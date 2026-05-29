@@ -29,6 +29,7 @@ Starcat is a Godot 4.6.2 strategy prototype with repository-level design docs an
 ## Documentation
 
 - `docs/design/` - canonical design documents split by topic.
+- `docs/papers/` - academic paper drafts and publication-oriented research artifacts.
 - `docs/research/` - external research summaries and technical recommendations.
 - `docs/superpowers/specs/` - implementation specs used by agentic workflows.
 - `docs/superpowers/plans/` - task-by-task implementation plans.
