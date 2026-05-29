@@ -9,6 +9,8 @@ This folder contains a research-oriented paper draft for Starcat's persistent AI
 - `literature_bank.md` - research survey notes and claim mapping.
 - `model_construction.md` - detailed persistent persona agent state, storage, primitive, validation, and update design.
 - `experiment_plan.md` - research questions, baselines, ablations, scenario suite, metrics, and execution milestones.
+- `experiments/` - deterministic Stage 1 proxy experiment used to exercise the proposed metrics before live game integration.
+- `results/` - generated Stage 1 CSV, manifest, and summary artifacts.
 - `research_harness_log.md` - record of Research Harness and Oh My Paper usage.
 
 ## Core Thesis

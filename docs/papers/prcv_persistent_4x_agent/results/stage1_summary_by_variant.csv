@@ -1,0 +1,7 @@
+variant,round,n,vp_auc_mean,vp_auc_std,persona_alignment_mean,invalid_primitive_rate_mean,failure_recurrence_mean,recovery_score_mean,commitment_stability_mean
+Heuristic,1,720,0.3016,0.0425,0.5634,0.0203,0.4158,0.3168,0.4010
+LLM-Episodic,1,720,0.4816,0.0427,0.6836,0.0453,0.2465,0.4635,0.4824
+LLM-NoPersona,1,720,0.4099,0.0411,0.6080,0.0502,0.3135,0.4048,0.4310
+PPA-Full,1,720,0.6241,0.0517,0.8623,0.0221,0.1364,0.5773,0.7442
+PPA-Full,2,720,0.6862,0.0536,0.8990,0.0177,0.0078,0.6451,0.7681
+PPA-NoOffline,1,720,0.5825,0.0495,0.8350,0.0241,0.1637,0.5459,0.7248

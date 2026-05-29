@@ -155,6 +155,29 @@ We propose evaluating PPA on three axes.
 
 Baselines should include local heuristic AI, LLM without persistent persona, LLM with episodic memory only, and PPA with full persona plus offline reflection. Important ablations are removing GlobalSummary, removing persona memories, removing primitive validation, and removing offline iteration.
 
+\section{Preliminary Stage 1 Proxy Experiment}
+Before integrating PPA into a full Godot runtime or a live LLM service, we implemented a deterministic Starcat-like proxy experiment to validate the experimental protocol. The simulator covers six strategic scenarios, six persona archetypes, five agent variants, and 20 seeds per scenario/persona/variant. It generates 4320 trials and records VP-AUC, persona-action alignment, invalid primitive rate, failure recurrence, recovery score, and commitment stability.
+
+The proxy is not presented as final empirical evidence. It is a calibration and paper-scaffolding experiment: its purpose is to make the proposed metrics executable, test whether the baselines are separable, and expose which measurements should be preserved when moving to live game traces.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Variant & VP-AUC & Align. & Invalid & Fail. recur. \\
+\midrule
+Heuristic & 0.3016 & 0.5634 & 0.0203 & 0.4158 \\
+LLM-NoPersona & 0.4099 & 0.6080 & 0.0502 & 0.3135 \\
+LLM-Episodic & 0.4816 & 0.6836 & 0.0453 & 0.2465 \\
+PPA-NoOffline & 0.5825 & 0.8350 & 0.0241 & 0.1637 \\
+PPA-Full & 0.6241 & 0.8623 & 0.0221 & 0.1364 \\
+\bottomrule
+\end{tabular}
+\caption{Stage 1 proxy results for round 1. Higher VP-AUC and alignment are better; lower invalid primitive rate and failure recurrence are better.}
+\end{table}
+
+The simulated offline update was applied only to PPA-Full in a second round. VP-AUC increased from 0.6241 to 0.6862, persona alignment increased from 0.8623 to 0.8990, invalid primitive rate decreased from 0.0221 to 0.0177, and failure recurrence decreased from 0.1364 to 0.0078. This supports the evaluation protocol's expectation that offline reflection should primarily reduce repeated strategic mistakes while preserving persona coherence.
+
 \section{Discussion}
 PPA makes three design bets. First, personality should be state, not prompt flavor. Second, LLMs should author intent rather than execute rules. Third, improvement should be durable and testable rather than hidden inside a live model conversation.
 

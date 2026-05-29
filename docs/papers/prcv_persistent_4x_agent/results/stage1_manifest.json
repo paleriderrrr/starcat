@@ -1,0 +1,27 @@
+{
+  "seeds": 20,
+  "scenarios": [
+    "expansion_race",
+    "betrayal_memory",
+    "distant_victory_threat",
+    "two_front_war",
+    "resource_bottleneck",
+    "personality_conflict"
+  ],
+  "personas": [
+    "Militarist Hegemon",
+    "Cautious Trader",
+    "Scientific Isolationist",
+    "Opportunistic Raider",
+    "Defensive Federalist",
+    "Expansionist Industrialist"
+  ],
+  "variants": [
+    "Heuristic",
+    "LLM-NoPersona",
+    "LLM-Episodic",
+    "PPA-NoOffline",
+    "PPA-Full"
+  ],
+  "total_trials": 4320
+}
