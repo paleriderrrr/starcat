@@ -1530,6 +1530,41 @@ class GodotBackendMigrationTests(unittest.TestCase):
         self.assertIn('badge.text = "%s%s" % [RESOURCE_BADGE_LABELS.get(resource_key, resource_key.substr(0, 1)), str(resource_value)]', star_map_source)
         self.assertIn('habitability_badge.text = "宜%s" % str(int(system.get("habitability", 0)))', star_map_source)
 
+    def test_godot_project_docs_replace_the_retired_web_stack(self) -> None:
+        spec = _read_text("SPEC.md")
+        migration = _read_text("starcat/GODOT_MIGRATION.md")
+
+        self.assertIn("Godot 4.6", spec)
+        self.assertIn("CURRENT_IMPLEMENTATION: GODOT", spec)
+        self.assertIn("Godot 4.6", migration)
+        self.assertIn("Current Product Implementation", migration)
+        self.assertNotIn("Godot Client Skeleton", migration)
+        self.assertNotIn("React + Three.js 原型逐步迁入 Godot", migration)
+
+    def test_turn_processing_records_persistent_decision_artifacts(self) -> None:
+        game_state = _read_text("starcat/scripts/autoload/GameState.gd")
+
+        self.assertIn('const DecisionIterationServiceScript = preload("res://scripts/services/DecisionIterationService.gd")', game_state)
+        self.assertIn('const DECISION_ITERATION_JSONL_PATH: String = "user://decision_iterations/records.jsonl"', game_state)
+        self.assertIn("var _decision_iteration_service: DecisionIterationService", game_state)
+        self.assertIn("func _begin_turn_iteration() -> void:", game_state)
+        self.assertIn("func _finish_turn_iteration(decision: Dictionary, provider_payload: Dictionary = {}) -> void:", game_state)
+        self.assertIn("_begin_turn_iteration()", game_state)
+        self.assertIn("_finish_turn_iteration(local_decision", game_state)
+        self.assertIn("_finish_turn_iteration(payload, payload)", game_state)
+        self.assertIn("append_jsonl_records(records, DECISION_ITERATION_JSONL_PATH)", game_state)
+
+    def test_runtime_smoke_and_check_script_verify_artifact_writes(self) -> None:
+        smoke_source = _read_text("starcat/tools/runtime_smoke_test.gd")
+        check_script = _read_text("starcat/tools/run_godot_checks.ps1")
+
+        self.assertIn("append_jsonl_records([snapshot_before, decision_record, evaluation, snapshot_after]", smoke_source)
+        self.assertIn("FileAccess.file_exists(artifact_path)", smoke_source)
+        self.assertIn("STARCAT_RUNTIME_SMOKE_OK", smoke_source)
+        self.assertIn("runtime_smoke_test.gd", check_script)
+        self.assertIn("python -m unittest tests.test_godot_backend_migration", check_script)
+        self.assertIn("Godot executable was not found", check_script)
+
 
 if __name__ == "__main__":
     unittest.main()

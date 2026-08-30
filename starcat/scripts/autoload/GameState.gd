@@ -2,6 +2,7 @@ extends Node
 
 const GameLogicScript = preload("res://scripts/GameLogic.gd")
 const InitialDataScript = preload("res://scripts/data/InitialData.gd")
+const DecisionIterationServiceScript = preload("res://scripts/services/DecisionIterationService.gd")
 
 signal state_changed(state: Dictionary)
 signal selection_changed(system_id: String, fleet_id: String)
@@ -10,9 +11,12 @@ signal tab_changed(tab_name: String)
 signal service_status_changed(status: String)
 signal advisor_changed(ai_advice: String, world_data: Dictionary, diplomatic_message: Dictionary)
 signal diplomacy_changed()
+signal decision_iteration_recorded(result: Dictionary)
 
 const PLAYER_FACTION_ID: String = "f_player"
 const MERCHANT_FACTION_ID: String = "f_merchant"
+const DECISION_ITERATION_JSONL_PATH: String = "user://decision_iterations/records.jsonl"
+const DECISION_ITERATION_PLAYBOOK_ID: String = "merchant_turn_v1"
 
 var labels_visible: bool = true
 var active_tab: String = "OBJECTIVES"
@@ -29,10 +33,14 @@ var diplomatic_visibility_prefs: Dictionary = {}
 var turn_busy: bool = false
 var _pending_conversation_target_id: String = ""
 var _pending_conversation_visibility: String = "PUBLIC"
+var _decision_iteration_service: DecisionIterationService = DecisionIterationServiceScript.new()
+var _pending_turn_snapshot: Dictionary = {}
+var _decision_iteration_game_id: String = ""
 
 var game_state: Dictionary = InitialDataScript.create_initial_state()
 
 func _ready() -> void:
+	_decision_iteration_game_id = _new_decision_iteration_game_id()
 	if has_node("/root/ApiClient"):
 		ApiClient.service_health_checked.connect(_on_service_health_checked)
 		ApiClient.world_query_received.connect(_on_world_query_received)
@@ -64,6 +72,8 @@ func reset_state() -> void:
 	turn_busy = false
 	_pending_conversation_target_id = ""
 	_pending_conversation_visibility = "PUBLIC"
+	_pending_turn_snapshot = {}
+	_decision_iteration_game_id = _new_decision_iteration_game_id()
 	_emit_all()
 
 func start_new_game(options: Dictionary) -> void:
@@ -80,6 +90,8 @@ func start_new_game(options: Dictionary) -> void:
 	turn_busy = false
 	_pending_conversation_target_id = ""
 	_pending_conversation_visibility = "PUBLIC"
+	_pending_turn_snapshot = {}
+	_decision_iteration_game_id = _new_decision_iteration_game_id()
 	_emit_all()
 
 func get_player_faction() -> Dictionary:
@@ -439,11 +451,14 @@ func advance_turn() -> void:
 	if turn_busy:
 		return
 	turn_busy = true
+	_begin_turn_iteration()
 	state_changed.emit(game_state)
 	if has_node("/root/ApiClient") and service_status == "online":
 		ApiClient.request_merchant_decision(game_state)
 	else:
 		game_state = GameLogicScript.process_turn(game_state)
+		var local_decision: Dictionary = _local_turn_decision()
+		_finish_turn_iteration(local_decision, {"source": "local", "tokens": {}})
 		turn_busy = false
 		AudioManager.play_event("turn_ready")
 		state_changed.emit(game_state)
@@ -654,6 +669,7 @@ func _on_conversation_received(payload: Dictionary) -> void:
 
 func _on_merchant_decision_received(payload: Dictionary) -> void:
 	game_state = GameLogicScript.process_turn(game_state, payload)
+	_finish_turn_iteration(payload, payload)
 	ai_advice = payload.get("structured_text", ai_advice)
 	turn_busy = false
 	AudioManager.play_event("turn_ready")
@@ -667,10 +683,64 @@ func _on_api_failed(_route: String, _message: String) -> void:
 		_pending_conversation_visibility = "PUBLIC"
 	if turn_busy:
 		game_state = GameLogicScript.process_turn(game_state)
+		var local_decision: Dictionary = _local_turn_decision()
+		_finish_turn_iteration(local_decision, {"source": "local", "tokens": {}, "fallback": true})
 		turn_busy = false
 		AudioManager.play_event("turn_ready")
 		state_changed.emit(game_state)
 	service_status_changed.emit(service_status)
+
+func _begin_turn_iteration() -> void:
+	if _decision_iteration_game_id == "":
+		_decision_iteration_game_id = _new_decision_iteration_game_id()
+	_pending_turn_snapshot = _decision_iteration_service.build_turn_snapshot(
+		game_state,
+		MERCHANT_FACTION_ID,
+		_decision_iteration_game_id
+	)
+
+func _finish_turn_iteration(decision: Dictionary, provider_payload: Dictionary = {}) -> void:
+	if _pending_turn_snapshot.is_empty():
+		return
+	var after_snapshot: Dictionary = _decision_iteration_service.build_turn_snapshot(
+		game_state,
+		MERCHANT_FACTION_ID,
+		_decision_iteration_game_id
+	)
+	var normalized_decision: Dictionary = decision.duplicate(true)
+	if normalized_decision.is_empty():
+		normalized_decision = _local_turn_decision()
+	var decision_record: Dictionary = _decision_iteration_service.build_decision_record(
+		_pending_turn_snapshot,
+		normalized_decision,
+		provider_payload,
+		DECISION_ITERATION_PLAYBOOK_ID,
+		["merchant_decision", "process_turn"]
+	)
+	var evaluation: Dictionary = _decision_iteration_service.evaluate_transition(_pending_turn_snapshot, after_snapshot)
+	var records: Array = [_pending_turn_snapshot, decision_record, evaluation, after_snapshot]
+	var write_result: Dictionary = _decision_iteration_service.append_jsonl_records(records, DECISION_ITERATION_JSONL_PATH)
+	var result: Dictionary = {
+		"game_id": _decision_iteration_game_id,
+		"turn": int(after_snapshot.get("turn", game_state.get("turn", 0))),
+		"records_written": int(write_result.get("written", 0)),
+		"ok": bool(write_result.get("ok", false)),
+		"errors": write_result.get("errors", []),
+	}
+	world_data["decision_iteration_write"] = result
+	_pending_turn_snapshot = {}
+	decision_iteration_recorded.emit(result)
+
+func _local_turn_decision() -> Dictionary:
+	return {
+		"action": "PROCESS_TURN",
+		"target": null,
+		"reasoning": "Use deterministic local turn processing because no remote strategist is available.",
+		"fallback": true,
+	}
+
+func _new_decision_iteration_game_id() -> String:
+	return "starcat_%s" % str(Time.get_unix_time_from_system())
 
 func _repair_selected_fleet_context(fallback_system_id: String = "") -> bool:
 	if selected_fleet_id == "" or not get_fleet_by_id(selected_fleet_id).is_empty():

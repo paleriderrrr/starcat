@@ -17,6 +17,14 @@ Open `starcat/project.godot` with Godot 4.6.2.
 
 The Godot client now includes local game-analysis, AI-decision, diplomacy, and narrative services. Normal development runs fully inside the Godot project.
 
+Run the complete headless smoke and repository regression flow with:
+
+```powershell
+.\starcat\tools\run_godot_checks.ps1 -GodotPath "C:\path\to\Godot.exe"
+```
+
+The runtime records AI-turn snapshots, decisions, and transition evaluations to `user://decision_iterations/records.jsonl`. These records support research and iteration; they are not player save data.
+
 ### Optional LLM
 
 Create `starcat/starcat.local.cfg` from `starcat/starcat.local.cfg.example` if you want direct LLM access from Godot. If `remote_enabled` is `false` or no key is provided, the client stays fully local and falls back to built-in rule/template generation.
@@ -51,4 +59,4 @@ See `docs/PROJECT_STRUCTURE.md` for the current directory layout, ownership boun
 
 ## Status
 
-The repository contains the Godot client with built-in local services, optional direct LLM integration, synced design documentation, and lightweight regression tests for the Godot-side service migration.
+The repository contains the Godot 4.6 client with deterministic gameplay rules, built-in local services, optional direct LLM integration, persistent decision telemetry, and repository plus runtime verification entry points.

@@ -1,54 +1,39 @@
-# Starcat Godot Client Skeleton
+# Starcat Godot Client
 
-这个目录下的 `starcat` 已经从空 Godot 工程推进到“可继续开发的完整迁移底座”，目标是把现有 `React + Three.js` 原型逐步迁入 Godot。
+`starcat/` is the current product implementation of MeowStellar. It is a Godot 4.6 strategy-game client, not a web migration skeleton.
 
-## 当前已落地
+## Current Product Implementation
 
-- `project.godot`
-  - 设置了 `Main.tscn` 为入口场景
-  - 注册了 `GameState` 和 `ApiClient` 两个 AutoLoad
-- `scenes/Main.tscn`
-  - 主场景，组合星图与 HUD
-- `scenes/StarMap.tscn`
-  - 3D 星图根场景
-- `scenes/HudLayer.tscn`
-  - 顶部资源栏、右侧抽屉、底部导航栏
-- `scripts/autoload/GameState.gd`
-  - 全局游戏状态、选中上下文、标签显隐、回合推进
-- `scripts/autoload/ApiClient.gd`
-  - Godot 内建服务门面与可选 LLM 调用入口
-- `scripts/StarMap.gd`
-  - 用现代 Godot 模式动态生成星系、航道、舰队
-- `scripts/HudLayer.gd`
-  - HUD 与抽屉内容的动态构建
-- `scripts/data/InitialData.gd`
-  - 从 web 版迁入的全量初始配置、建筑、科技、舰船与星图数据
-- `scripts/GameLogic.gd`
-  - 从 web 版迁入的核心玩法规则：研究、建造、造舰、跃迁、探索、殖民、维修、条约、回合推进、飞升与胜负判定
+- `project.godot` starts `scenes/Main.tscn` and registers `GameState`, `ApiClient`, and `AudioManager` as AutoLoads.
+- `scenes/Main.tscn`, `StarMap.tscn`, and `HudLayer.tscn` provide the menu, interactive 3D strategic map, and game HUD.
+- `scripts/GameLogic.gd` owns the deterministic 4X rules: research, construction, ship production, fleets, exploration, colonization, diplomacy, combat, turn processing, and victory checks.
+- `scripts/services/` provides local analysis, AI decisions, narrative fallback, and decision-iteration artifacts. Remote LLM use remains optional.
+- `scripts/autoload/GameState.gd` writes a decision snapshot, decision record, transition evaluation, and resulting snapshot for every processed AI turn.
+- `tools/runtime_smoke_test.gd` exercises the playable loop in Godot headless mode, including persisted JSONL decision artifacts.
 
-## 迁移映射
+## Architecture Boundary
 
-网页原型到 Godot 的映射已经定下来了：
+The Godot client is the authoritative runtime. GDScript owns state transitions and rule validation. The LLM may propose strategic intent or narrative text, but it never mutates game state directly.
 
-- `frontend/src/App.tsx` -> `scripts/Main.gd`
-- `frontend/src/components/StarMap.tsx` -> `scripts/StarMap.gd`
-- `frontend/src/components/UI.tsx` -> `scripts/HudLayer.gd`
-- `frontend/src/game/data.ts` -> `scripts/autoload/GameState.gd`
-- 旧 Python 服务层 -> 已迁入 `scripts/autoload/ApiClient.gd` 与 `scripts/services/*`
+The earlier Rust/Wasm, React, Three.js, and independent Python service proposals are retired as current implementation targets. A GDExtension can be considered later only if profiling identifies a real performance bottleneck.
 
-## 下一步建议
+## Local LLM Configuration
 
-1. 用 Godot 编辑器实际打开工程，修正仅在运行时才会暴露的 UI 或 GDScript 细节
-2. 继续提升 Godot 内 AI 决策质量，让商贾联盟回合与外交文案更稳定
-3. 给星图补相机拖拽、缩放、Hover 提示和更清晰的舰队选中反馈
-4. 给 HUD 增加消息中心与更精细的战斗/条约摘要
-5. 再评估是否把 Rust 核心通过 GDExtension 接入 Godot
+Copy `starcat.local.cfg.example` to `starcat.local.cfg` to enable an optional provider. With `remote_enabled=false`, the project remains fully playable using deterministic local AI and narrative fallbacks.
 
-## 设计约束
+## Verification
 
-- 场景切换优先用 `get_tree().change_scene_to_file()`
-- 场景通信优先用 `signals`
-- 全局状态放在 `AutoLoad`
-- GDScript 统一写类型标注
-- 涉及用户可见界面改动时，默认优先通过 `.tscn` 场景和 Godot 编辑器完成可视化修改；只有在需求明确说明，或 UI 结构本身由通用数据驱动且无法稳定用编辑器表达时，才允许在脚本中动态创建 UI 节点
-- 百炼 API Key 通过 Godot 本地配置文件接入；未启用时默认走本地规则与模板回退
+From the repository root, run the complete Godot verification flow with an installed Godot executable:
+
+```powershell
+.\starcat\tools\run_godot_checks.ps1 -GodotPath "C:\path\to\Godot.exe"
+```
+
+Set `GODOT_PATH` instead of passing `-GodotPath` to use the same command in CI. Add `-IncludeMimo` only when `MIMO_API_KEY` is available and an external provider smoke test is intended.
+
+## Development Constraints
+
+- Prefer `.tscn` scenes for user-visible UI structure and styling.
+- Keep gameplay rules deterministic and centralized in `GameLogic.gd`.
+- Use signals for scene communication and AutoLoads for cross-scene state.
+- Treat `user://decision_iterations/records.jsonl` as research telemetry, not as a player save file.

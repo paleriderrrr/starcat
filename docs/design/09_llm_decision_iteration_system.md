@@ -45,7 +45,7 @@ Starcat maps that loop as follows:
 - serialize records as JSONL lines;
 - append valid artifacts to `user://decision_iterations/records.jsonl`.
 
-`ApiClient.gd` exposes snapshot, decision, transition evaluation, trial, and JSONL write routes without requiring Bailian or any other model provider. `GameState.gd` exposes a snapshot request wrapper so UI/debug tools can ask for instrumentation through the same service path as other world analysis requests. This keeps instrumentation available in CI and during offline play.
+`ApiClient.gd` exposes snapshot, decision, transition evaluation, trial, and JSONL write routes without requiring Bailian or any other model provider. `GameState.gd` still exposes a snapshot request wrapper for UI/debug tooling, and now also records the merchant AI turn automatically: it captures the pre-turn state, the selected decision, the post-turn state, and the evaluation as one JSONL artifact group. This keeps instrumentation available in CI and during offline play without granting the model authority to mutate game state directly.
 
 ## Iteration Policy
 

@@ -24,7 +24,7 @@ Starcat is a Godot 4.6.2 strategy prototype with repository-level design docs an
   - `llm/` contains optional model provider clients.
   - `services/` contains local analysis, AI, narrative, and iteration services.
 - `starcat/assets/` - imported runtime assets for audio, UI, factions, fonts, and star map VFX.
-- `starcat/tools/` - asset generation, smoke tests, and runtime audit scripts.
+- `starcat/tools/` - asset generation, smoke tests, runtime audit scripts, and `run_godot_checks.ps1` for the headless verification flow.
 
 ## Documentation
 

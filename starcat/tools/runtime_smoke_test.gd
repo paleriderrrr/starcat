@@ -74,6 +74,11 @@ func _initialize() -> void:
 	_expect(bool(iteration_service.validate_record(decision_record).get("ok", false)), "decision record validates")
 	_expect(bool(iteration_service.validate_record(evaluation).get("ok", false)), "evaluation record validates")
 	_expect(bool(iteration_service.validate_record(trial).get("ok", false)), "trial record validates")
+	var artifact_path: String = "user://decision_iterations/runtime_smoke_records.jsonl"
+	var artifact_write: Dictionary = iteration_service.append_jsonl_records([snapshot_before, decision_record, evaluation, snapshot_after], artifact_path)
+	_expect(bool(artifact_write.get("ok", false)), "decision artifacts write to JSONL")
+	_expect(int(artifact_write.get("written", 0)) == 4, "all decision artifacts are written")
+	_expect(FileAccess.file_exists(artifact_path), "decision artifact JSONL exists")
 
 	var victory_report: Dictionary = GameLogicScript.player_victory_progress_report(state)
 	_expect(victory_report.has("military") and victory_report.has("diplomatic") and victory_report.has("science"), "victory report covers all paths")
